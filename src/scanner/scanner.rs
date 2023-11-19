@@ -213,20 +213,8 @@ impl Scanner<'_> {
                     if self.check("=") {
                         self.add_token(TokenType::Equal);
                     } else {
-                        let error_type = ErrorType::UnrecognizedTokenError;
-
-                        self.error.report(
-                            error_type,
-                            vec![ErrorMessage::new(
-                                Some(format!(
-                                    "{} \"{}\"",
-                                    error_type.description(),
-                                    self.get_lexeme()
-                                )),
-                                &self.new_location_info(1),
-                            )],
-                            Some(String::from("Did you mean \":=\" or \"==\"?")),
-                        );
+                        // This is probably intended to be := or ==
+                        self.add_token(TokenType::BadAssign);
                     }
                 } else if g == "<" {
                     // If the next grapheme is an equals sign, we have a <= token
@@ -354,8 +342,15 @@ impl Scanner<'_> {
         self.keywords.insert(String::from("i32"), TokenType::I32);
         self.keywords.insert(String::from("i64"), TokenType::I64);
         self.keywords.insert(String::from("i128"), TokenType::I128);
+        self.keywords.insert(String::from("u8"), TokenType::U8);
+        self.keywords.insert(String::from("u16"), TokenType::U16);
+        self.keywords.insert(String::from("u32"), TokenType::U32);
+        self.keywords.insert(String::from("u64"), TokenType::U64);
+        self.keywords.insert(String::from("u128"), TokenType::U128);
         self.keywords.insert(String::from("f32"), TokenType::F32);
         self.keywords.insert(String::from("f64"), TokenType::F64);
+        self.keywords.insert(String::from("bool"), TokenType::Bool);
+        self.keywords.insert(String::from("str"), TokenType::Str);
         self.keywords.insert(String::from("true"), TokenType::True);
         self.keywords
             .insert(String::from("false"), TokenType::False);

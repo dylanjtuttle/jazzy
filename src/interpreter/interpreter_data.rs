@@ -22,12 +22,12 @@
  * SOFTWARE.
  */
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     LiteralVal(LiteralVal),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum LiteralVal {
     Int(i128),
     Float(f64),

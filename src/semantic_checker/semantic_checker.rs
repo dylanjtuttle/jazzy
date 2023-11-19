@@ -25,47 +25,193 @@
 use crate::infrastructure::error::{ErrorMessage, ErrorReporter, ErrorType};
 use crate::infrastructure::log::Logger;
 use crate::parser::parser_data::{
-    ASTNode, BinaryExprNode, BinaryOperator, ExpressionNode, Literal, LiteralNode, NodePointer,
-    UnaryExprNode, UnaryOperator, AST,
+    traverse, ASTNode, BinaryExprNode, BinaryOperator, ExpressionNode, Literal, LiteralNode,
+    NodePointer, StatementNode, Traversal, UnaryExprNode, UnaryOperator, VariableDeclarationNode,
+    AST,
 };
 use crate::semantic_checker::semantic_checker_data::{DataType, Type};
 
-use super::semantic_checker_data::{CanCast, Primitive, PrimitiveClass};
+use super::semantic_checker_data::{
+    Callback, CanCast, GlobalDeclarations, IdentifiersPost, IdentifiersPre, MiscellaneousChecks,
+    Primitive, PrimitiveClass, Symbol, SymbolTable, TypeChecking, VariableSymbol,
+};
 
 pub struct SemanticChecker<'semantic> {
     pub ast: &'semantic mut AST,
+    pub symbol_table: &'semantic mut SymbolTable,
     pub logger: &'semantic mut Logger,
     pub error: &'semantic mut ErrorReporter,
+}
+
+impl GlobalDeclarations {
+    pub fn run(
+        &mut self,
+        _node: NodePointer,
+        _ast: &mut AST,
+        _symbol_table: &mut SymbolTable,
+        _logger: &mut Logger,
+        _error: &mut ErrorReporter,
+    ) {
+    }
+}
+
+impl IdentifiersPre {
+    pub fn run(
+        &mut self,
+        _node: NodePointer,
+        _ast: &mut AST,
+        _symbol_table: &mut SymbolTable,
+        _logger: &mut Logger,
+        _error: &mut ErrorReporter,
+    ) {
+    }
+}
+
+impl IdentifiersPost {
+    pub fn run(
+        &mut self,
+        node: NodePointer,
+        ast: &mut AST,
+        symbol_table: &mut SymbolTable,
+        logger: &mut Logger,
+        error: &mut ErrorReporter,
+    ) {
+        match ast.get_mut_node(node) {
+            ASTNode::StatementNode(stmt_node) => match stmt_node {
+                StatementNode::VariableDeclaration(var_node) => {
+                    logger.log(&format!("Found variable declaration {}", &var_node.name));
+
+                    let symbol_pointer = symbol_table.new_symbol(
+                        var_node.name.clone(),
+                        Symbol::Variable(VariableSymbol::new(var_node.name.clone())),
+                    );
+                    var_node.symbol = Some(symbol_pointer);
+                }
+            },
+            ASTNode::ExpressionNode(expr_node) => match expr_node {
+                ExpressionNode::Variable(var_node) => {
+                    logger.log(&format!("Found variable {}", &var_node.name));
+
+                    // See if this variable has been defined before
+                    match symbol_table.find_symbol(&var_node.name) {
+                        Some(symbol) => {
+                            logger.log(&format!("Variable {} has a declaration", &var_node.name));
+                            var_node.symbol = Some(symbol.to_owned());
+                        }
+                        None => {
+                            logger.log(&format!(
+                                "Variable {} has a does NOT have a declaration",
+                                &var_node.name
+                            ));
+                            error.report(
+                                ErrorType::UnrecognizedIdentifierError,
+                                vec![ErrorMessage::new(
+                                    Some(format!("Cannot find identifier \"{}\"", &var_node.name)),
+                                    &var_node.token.location_info,
+                                )],
+                                None,
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+impl TypeChecking {
+    pub fn run(
+        &mut self,
+        _node: NodePointer,
+        _ast: &mut AST,
+        _symbol_table: &mut SymbolTable,
+        _logger: &mut Logger,
+        _error: &mut ErrorReporter,
+    ) {
+    }
+}
+
+impl MiscellaneousChecks {
+    pub fn run(
+        &mut self,
+        _node: NodePointer,
+        _ast: &mut AST,
+        _symbol_table: &mut SymbolTable,
+        _logger: &mut Logger,
+        _error: &mut ErrorReporter,
+    ) {
+    }
 }
 
 impl SemanticChecker<'_> {
     pub fn new<'semantic>(
         ast: &'semantic mut AST,
+        symbol_table: &'semantic mut SymbolTable,
         logger: &'semantic mut Logger,
         error: &'semantic mut ErrorReporter,
     ) -> SemanticChecker<'semantic> {
-        return SemanticChecker { ast, logger, error };
+        return SemanticChecker {
+            ast,
+            symbol_table,
+            logger,
+            error,
+        };
     }
 
-    pub fn check(&mut self, node: NodePointer) {
+    pub fn check(&mut self) {
         self.logger.log("");
         self.logger.log("-----------------------");
         self.logger.log("BEGIN Semantic Checking");
         self.logger.log("-----------------------");
 
-        self.type_check(node);
+        // First pass: Global declarations
+        self.logger.log("FIRST PASS: GLOBAL DECLARATIONS");
+        let mut global_declarations = Callback::GlobalDeclarations(GlobalDeclarations::new());
+        traverse(
+            &mut Traversal::Preorder(&mut global_declarations),
+            self.ast.root_node,
+            self.ast,
+            self.symbol_table,
+            self.logger,
+            self.error,
+        );
 
-        self.logger.log("\nAST after type checking:");
-        self.logger
-            .log(&format!("{}", self.ast.get_node(node).to_string(&self.ast)))
+        // Second pass: Identifiers
+        self.logger.log("SECOND PASS: IDENTIFIERS");
+        let mut identifiers_pre = Callback::IdentifiersPre(IdentifiersPre::new());
+        let mut identifiers_post = Callback::IdentifiersPost(IdentifiersPost::new());
+        traverse(
+            &mut Traversal::PrePostorder(&mut identifiers_pre, &mut identifiers_post),
+            self.ast.root_node,
+            self.ast,
+            self.symbol_table,
+            self.logger,
+            self.error,
+        );
+
+        // Third pass: Type checking
+        self.logger.log("THIRD PASS: TYPE CHECKING");
+        self.type_check(self.ast.root_node);
+
+        // Fourth pass: Miscellaneous checks
+        self.logger.log("FOURTH PASS: MISCELLANEOUS CHECKS");
+
+        self.logger.log("\nAST after semantic checking:");
+        self.logger.log(&format!(
+            "{}",
+            self.ast.get_root_node().to_string(&self.ast)
+        ))
     }
 
     pub fn type_check(&mut self, node: NodePointer) {
         // First we need to type check any children of this node
         match self.ast.get_mut_node(node) {
             ASTNode::RootNode(node) => {
-                let expression = node.expression;
-                self.type_check(expression);
+                for child in node.children.clone() {
+                    self.type_check(child);
+                }
             }
             ASTNode::ExpressionNode(node) => {
                 match node {
@@ -82,10 +228,20 @@ impl SemanticChecker<'_> {
                     }
                     // Leaf node, no children
                     ExpressionNode::Literal(_) => {}
+                    ExpressionNode::Variable(_) => {}
                 }
             }
+            // Type check the expression
+            ASTNode::StatementNode(node) => match node {
+                StatementNode::VariableDeclaration(node) => {
+                    let expression = node.expression;
+                    self.type_check(expression);
+                }
+            },
             // Leaf node, no children
-            ASTNode::NotANode(_) => {}
+            ASTNode::NotANode(_) => panic!("NotANode in type check"),
+            ASTNode::TypeHintNode(_) => panic!("TypeHintNode in type check"),
+            ASTNode::IdentifierNode(_) => panic!("IdentifierNode in type check"),
         };
 
         // Now we can type check
@@ -109,11 +265,19 @@ impl SemanticChecker<'_> {
                     let new_type = self.type_check_unary(&mut unary_node);
                     self.infer_type(node, new_type);
                 }
+                ExpressionNode::Variable(_) => {}
+            },
+            ASTNode::StatementNode(node) => match node {
+                StatementNode::VariableDeclaration(mut assignment_node) => {
+                    self.type_check_variable_declaration(&mut assignment_node);
+                }
             },
             // Already type checked any children
             ASTNode::RootNode(_) => {}
             // No need to type check, already UnTyped
             ASTNode::NotANode(_) => {}
+            ASTNode::TypeHintNode(_) => panic!("Cannot type check TypeHintNode"),
+            ASTNode::IdentifierNode(_) => todo!("Cannot type check IdentifierNode"),
         }
     }
 
@@ -122,19 +286,19 @@ impl SemanticChecker<'_> {
         match node.value {
             Literal::Int(_) => {
                 let data_type = Type::Primitive(Primitive::CompileTimeInt);
-                return DataType::new(data_type, data_type.get_label());
+                return DataType::new(data_type);
             }
             Literal::Float(_) => {
                 let data_type = Type::Primitive(Primitive::CompileTimeFloat);
-                return DataType::new(data_type, data_type.get_label());
+                return DataType::new(data_type);
             }
             Literal::True(_) | Literal::False(_) => {
                 let data_type = Type::Primitive(Primitive::Bool);
-                return DataType::new(data_type, data_type.get_label());
+                return DataType::new(data_type);
             }
             Literal::String(_) => {
                 let data_type = Type::Primitive(Primitive::String);
-                return DataType::new(data_type, data_type.get_label());
+                return DataType::new(data_type);
             }
         }
     }
@@ -150,7 +314,7 @@ impl SemanticChecker<'_> {
         // just leave this node untyped as well
         // to try and capture as many errors as possible before quitting
         if is_untyped(&left_type) || is_untyped(&right_type) {
-            return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+            return DataType::new(Type::UnTyped);
         } else {
             if binary_is_arithmetic(node) {
                 // Both operands must be numbers, output is number
@@ -185,7 +349,7 @@ impl SemanticChecker<'_> {
                                     }
                                 ),
                             );
-                            return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                            return DataType::new(Type::UnTyped);
                         }
                     } else if !is_compile_time(&left_type) && is_compile_time(&right_type) {
                         // We know the left type but not the right type,
@@ -237,7 +401,7 @@ impl SemanticChecker<'_> {
                                 )],
                                 Some(String::from("Consider casting the result of one expression into the type of the other")),
                             );
-                            return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                            return DataType::new(Type::UnTyped);
                         }
                     }
                 } else {
@@ -249,15 +413,12 @@ impl SemanticChecker<'_> {
                         &PrimitiveClass::Number,
                         &node,
                     );
-                    return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                    return DataType::new(Type::UnTyped);
                 }
             } else if binary_is_boolean(node) {
                 // Both operands must be bools, result is bool
                 if is_bool(&left_type) && is_bool(&right_type) {
-                    return DataType::new(
-                        Type::Primitive(Primitive::Bool),
-                        Type::Primitive(Primitive::Bool).get_label(),
-                    );
+                    return DataType::new(Type::Primitive(Primitive::Bool));
                 } else {
                     let left = self.ast.get_node(left_pointer).clone();
                     let right = self.ast.get_node(right_pointer).clone();
@@ -267,7 +428,7 @@ impl SemanticChecker<'_> {
                         &PrimitiveClass::Bool,
                         &node,
                     );
-                    return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                    return DataType::new(Type::UnTyped);
                 }
             } else if binary_is_comparison(node) {
                 // Operands must be numbers (no need to implicitly cast), result is bool
@@ -295,12 +456,9 @@ impl SemanticChecker<'_> {
                             ],
                             None,
                         );
-                        return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                        return DataType::new(Type::UnTyped);
                     } else {
-                        return DataType::new(
-                            Type::Primitive(Primitive::Bool),
-                            Type::Primitive(Primitive::Bool).get_label(),
-                        );
+                        return DataType::new(Type::Primitive(Primitive::Bool));
                     }
                 } else {
                     let left = self.ast.get_node(left_pointer).clone();
@@ -311,7 +469,7 @@ impl SemanticChecker<'_> {
                         &PrimitiveClass::Number,
                         &node,
                     );
-                    return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                    return DataType::new(Type::UnTyped);
                 }
             } else if binary_is_equality(node) {
                 // Operands can be anything, result is bool
@@ -338,15 +496,12 @@ impl SemanticChecker<'_> {
                         ],
                         None,
                     );
-                    return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                    return DataType::new(Type::UnTyped);
                 } else {
-                    return DataType::new(
-                        Type::Primitive(Primitive::Bool),
-                        Type::Primitive(Primitive::Bool).get_label(),
-                    );
+                    return DataType::new(Type::Primitive(Primitive::Bool));
                 }
             } else {
-                return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                return DataType::new(Type::UnTyped);
             }
         }
     }
@@ -360,7 +515,7 @@ impl SemanticChecker<'_> {
         // just leave this node untyped as well
         // to try and capture as many errors as possible before quitting
         if is_untyped(&operand_type) {
-            return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+            return DataType::new(Type::UnTyped);
         } else {
             match node.operator {
                 UnaryOperator::Minus => {
@@ -389,7 +544,7 @@ impl SemanticChecker<'_> {
                                 ],
                                 None,
                             );
-                            return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                            return DataType::new(Type::UnTyped);
                         } else {
                             // Return a copy of the operand's type
                             return operand_type;
@@ -415,7 +570,7 @@ impl SemanticChecker<'_> {
                             None,
                         );
 
-                        return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                        return DataType::new(Type::UnTyped);
                     }
                 }
                 UnaryOperator::Not => {
@@ -444,9 +599,36 @@ impl SemanticChecker<'_> {
                             None,
                         );
 
-                        return DataType::new(Type::UnTyped, Type::UnTyped.get_label());
+                        return DataType::new(Type::UnTyped);
                     }
                 }
+            }
+        }
+    }
+
+    pub fn type_check_variable_declaration(&mut self, node: &mut VariableDeclarationNode) {
+        let expression_type = self.ast.get_node(node.expression).get_type();
+
+        // If this assignment has a type hint,
+        // make sure the expression has the same type
+        match node.type_hint {
+            Some(type_hint_pointer) => {
+                let hint_type = self.ast.get_node(type_hint_pointer).get_type();
+                if hint_type != expression_type {
+                    // If the types aren't equal,
+                    // the expression could still have a compile-time type
+                    if is_compile_time(&expression_type) {
+                        if (is_int(&hint_type) && is_compile_time_int(&expression_type))
+                            || (is_float(&hint_type) && is_compile_time_float(&expression_type))
+                        {
+                            // update the expression type
+                            self.infer_type(node.expression, hint_type);
+                        }
+                    }
+                }
+            }
+            None => {
+                // Infer the type of the variable
             }
         }
     }
@@ -625,10 +807,15 @@ impl SemanticChecker<'_> {
                             let operand_pointer = unary_node.operand;
                             self.infer_type(operand_pointer, new_type);
                         }
+                        ExpressionNode::Variable(_) => todo!(),
                     }
                 }
                 ASTNode::RootNode(_) => panic!("Trying to infer type of RootNode"),
                 ASTNode::NotANode(_) => panic!("Trying to infer type of NotANode"),
+                // Uhh do later
+                ASTNode::StatementNode(_) => todo!(),
+                ASTNode::TypeHintNode(_) => todo!(),
+                ASTNode::IdentifierNode(_) => todo!(),
             }
         }
         /*

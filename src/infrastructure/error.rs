@@ -71,6 +71,8 @@ pub enum ErrorType {
     IllegalImplicitCastError,
     IncompatibleTypesError,
     OverflowError,
+    UnexpectedTokenError,
+    UnrecognizedIdentifierError,
 }
 
 impl ErrorType {
@@ -99,6 +101,8 @@ impl ErrorType {
             ErrorType::IllegalImplicitCastError => format!("[E0010] {}", self.description()),
             ErrorType::IncompatibleTypesError => format!("[E0011] {}", self.description()),
             ErrorType::OverflowError => format!("[E0012] {}", self.description()),
+            ErrorType::UnexpectedTokenError => format!("[E0013] {}", self.description()),
+            ErrorType::UnrecognizedIdentifierError => format!("[E0014] {}", self.description()),
         }
     }
 
@@ -121,6 +125,8 @@ impl ErrorType {
             ErrorType::IllegalImplicitCastError => String::from("Illegal implicit cast"),
             ErrorType::IncompatibleTypesError => String::from("Incompatible types"),
             ErrorType::OverflowError => String::from("Integer overflow"),
+            ErrorType::UnexpectedTokenError => String::from("Unexpected token"),
+            ErrorType::UnrecognizedIdentifierError => String::from("Unrecognized identifier"),
         }
     }
 }
