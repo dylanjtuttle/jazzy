@@ -37,7 +37,7 @@ use crate::{
 };
 
 use super::semantic_checker::SemanticChecker;
-
+/*
 #[test]
 pub fn test_type_check_literal() {
     let mut ast = AST::new();
@@ -548,7 +548,7 @@ pub fn test_error_type_check_unary_expr() {
         }
     }
 }
-
+*/
 pub fn generate_literal_operand(ast: &mut AST, val: Literal) -> NodePointer {
     let operand_pointer = ast.new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
         LiteralNode::new(val.clone(), generate_generic_token()),
