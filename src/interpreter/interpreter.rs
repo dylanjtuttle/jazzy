@@ -81,11 +81,20 @@ impl Interpreter<'_> {
                 let new_children_start_at = node.new_children_start_at;
                 let mut construct_index = 0;
                 let num_constructs = node.children.len();
+
+                self.logger
+                    .log(&format!("New children start at {}", new_children_start_at));
+
                 for construct in node.children.clone() {
                     // We only want to interpret new nodes,
                     // to avoid evaluating something we've already
                     // evaluated on the last run
-                    if construct_index < new_children_start_at {
+                    if construct_index != new_children_start_at {
+                        self.logger.log(&format!(
+                            "Skipping child \n{}it has already been interpreted",
+                            self.ast.get_node(construct).to_string(&self.ast)
+                        ));
+                        construct_index += 1;
                         continue;
                     }
 
@@ -94,15 +103,7 @@ impl Interpreter<'_> {
                             // Only bother evaluating top level expressions if they're the last one
                             if construct_index == num_constructs - 1 {
                                 let value = self.evaluate_expression(construct);
-                                match value {
-                                    Value::LiteralVal(literal) => match literal {
-                                        LiteralVal::Int(int_val) => println!("{}", int_val),
-                                        LiteralVal::Float(float_val) => println!("{}", float_val),
-                                        LiteralVal::Bool(bool_val) => println!("{}", bool_val),
-                                        LiteralVal::String(string_val) => println!("{}", string_val),
-                                    },
-                                }
-                                println!(""); // Extra newline
+                                println!("{}\n", value);
                             }
                         }
                         ASTNode::StatementNode(_) => {
