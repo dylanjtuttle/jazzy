@@ -71,6 +71,18 @@ impl AST {
         return self.nodes.len() - 1;
     }
 
+    pub fn get_pointer(&mut self, node: &ASTNode) -> NodePointer {
+        let mut pointer = 0;
+        for ast_node in &self.nodes {
+            if node == ast_node {
+                return pointer;
+            }
+            pointer += 1;
+        }
+
+        panic!("ASTNode cannot be found in AST");
+    }
+
     pub fn len(&self) -> usize {
         return self.nodes.len();
     }
@@ -577,7 +589,15 @@ impl VariableExprNode {
     }
 
     pub fn node_to_string(&self) -> String {
-        return format!("{{Variable: {}}}", self.name);
+        // return format!("{{Variable: {}}}", self.name);
+        return format!(
+            "{{Variable: {}{}}}",
+            self.name,
+            match self.get_type().data_type {
+                Type::UnTyped => String::from(""),
+                _type => format!(", type: '{}'", _type.get_label()),
+            }
+        );
     }
 }
 

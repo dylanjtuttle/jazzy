@@ -128,7 +128,7 @@ pub enum CanCast {
     No(String),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Symbol {
     Variable(VariableSymbol),
 }
@@ -153,7 +153,7 @@ impl Symbol {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct VariableSymbol {
     pub name: String,
     pub data_type: DataType,

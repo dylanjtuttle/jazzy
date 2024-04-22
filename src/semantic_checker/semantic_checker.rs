@@ -32,8 +32,8 @@ use crate::parser::parser_data::{
 use crate::semantic_checker::semantic_checker_data::{DataType, Type};
 
 use super::semantic_checker_data::{
-    Callback, CanCast, GlobalDeclarations, IdentifiersPost, IdentifiersPre, MiscellaneousChecks,
-    Primitive, PrimitiveClass, Symbol, SymbolTable, TypeChecking, VariableSymbol,
+    Callback, GlobalDeclarations, IdentifiersPost, IdentifiersPre, MiscellaneousChecks, Primitive,
+    PrimitiveClass, Symbol, SymbolTable, TypeChecking, VariableSymbol,
 };
 
 pub struct SemanticChecker<'semantic> {
@@ -126,7 +126,7 @@ impl TypeChecking {
         &mut self,
         node: NodePointer,
         ast: &mut AST,
-        _symbol_table: &mut SymbolTable,
+        symbol_table: &mut SymbolTable,
         logger: &mut Logger,
         error: &mut ErrorReporter,
     ) {
@@ -151,11 +151,20 @@ impl TypeChecking {
                     let new_type = type_check_unary(&mut unary_node, ast, error);
                     infer_type(node, new_type, ast, logger);
                 }
-                ExpressionNode::Variable(_) => {}
+                // Variable expression nodes already have a type in their symbol table entry
+                // that was set when type checking the variable declaration nodes
+                ExpressionNode::Variable(var_node) => {
+                    println!("{}", var_node.get_type().get_label());
+                }
             },
             ASTNode::StatementNode(node) => match node {
                 StatementNode::VariableDeclaration(mut assignment_node) => {
-                    type_check_variable_declaration(&mut assignment_node, ast, logger);
+                    type_check_variable_declaration(
+                        &mut assignment_node,
+                        ast,
+                        symbol_table,
+                        logger,
+                    );
                 }
             },
             // Already type checked any children
@@ -590,6 +599,7 @@ pub fn type_check_unary(
 pub fn type_check_variable_declaration(
     node: &mut VariableDeclarationNode,
     ast: &mut AST,
+    symbol_table: &mut SymbolTable,
     logger: &mut Logger,
 ) {
     let expression_type = ast.get_node(node.expression).get_type();
@@ -607,166 +617,29 @@ pub fn type_check_variable_declaration(
                         || (is_float(&hint_type) && is_compile_time_float(&expression_type))
                     {
                         // update the expression type
-                        infer_type(node.expression, hint_type, ast, logger);
+                        infer_type(node.expression, hint_type.clone(), ast, logger);
                     }
                 }
+            }
+
+            // Infer the type of the variable
+            match symbol_table.find_symbol(&node.name) {
+                None => panic!("Should have already handled case that variable cannot be found"),
+                Some(symbol) => match &mut *symbol.borrow_mut() {
+                    Symbol::Variable(var_symbol) => var_symbol.data_type = hint_type,
+                },
             }
         }
         None => {
             // Infer the type of the variable
-        }
-    }
-}
-
-// Try casting in both directions and do so if possible
-pub fn dual_directional_cast(
-    left: NodePointer,
-    right: NodePointer,
-    ast: &mut AST,
-    error: &mut ErrorReporter,
-    logger: &mut Logger,
-) -> bool {
-    let left_type = ast.get_node(left).get_type();
-    let right_type = ast.get_node(right).get_type();
-
-    // Check if we can cast the left node into the type of the right node
-    match can_implicitly_cast(&left_type, &right_type) {
-        // If we can, cast the left node into the type of the right node
-        CanCast::Yes => {
-            implicit_cast(left, right, ast, logger);
-            return true;
-        }
-        // If we can't, check if we can cast the right node into the type of the left node
-        CanCast::No(_) => match can_implicitly_cast(&right_type, &left_type) {
-            // If we can, cast the right node into the type of the left node
-            CanCast::Yes => {
-                implicit_cast(right, left, ast, logger);
-                return true;
-            }
-            // If we can't, throw an incompatible types error
-            CanCast::No(_) => {
-                let error_type = ErrorType::IncompatibleTypesError;
-                error.report(
-                    error_type,
-                    vec![
-                        ErrorMessage::new(
-                            Some(format!(
-                                "{} '{}' and '{}'",
-                                error_type.description(),
-                                left_type.get_label(),
-                                right_type.get_label(),
-                            )),
-                            &ast.get_node(left).get_token().location_info,
-                        ),
-                        ErrorMessage::new(None, &ast.get_node(right).get_token().location_info),
-                    ],
-                    None,
-                );
-
-                return false;
-            }
-        },
-    }
-}
-
-// Test if we can cast one type into another
-pub fn can_implicitly_cast(old_type: &DataType, new_type: &DataType) -> CanCast {
-    // We can't implicitly cast a number into a non-number
-    if is_number(&old_type) && !is_number(&new_type) {
-        return CanCast::No(format!(
-            "Cannot implicitly cast number of type '{}' into non-number of type '{}'",
-            old_type.get_label(),
-            new_type.get_label(),
-        ));
-    }
-    // We can't implicitly cast a non-number into a number
-    else if !is_number(&old_type) && is_number(&new_type) {
-        return CanCast::No(format!(
-            "Cannot implicitly cast non-number of type '{}' into number of type '{}'",
-            old_type.get_label(),
-            new_type.get_label(),
-        ));
-    }
-    // We can't implicitly cast floats into ints
-    else if is_float(&old_type) && is_int(&new_type) {
-        return CanCast::No(format!(
-            "Cannot implicitly cast number of type '{}' into number of type '{}'",
-            old_type.get_label(),
-            new_type.get_label(),
-        ));
-    }
-    // We can't implicitly cast signed into unsigned
-    else if is_signed(&old_type) && is_unsigned(&new_type) {
-        return CanCast::No(format!(
-                "Cannot implicitly cast signed integer of type '{}' into unsigned integer of type '{}' due to the possibility of truncation or overflow",
-                old_type.get_label(),
-                new_type.get_label(),
-            ));
-    }
-    // We can't implicitly cast unsigned into signed
-    else if is_unsigned(&old_type) && is_signed(&new_type) {
-        return CanCast::No(format!(
-                "Cannot implicitly cast unsigned integer of type '{}' into signed integer of type '{}' due to the possibility of truncation or overflow",
-                old_type.get_label(),
-                new_type.get_label(),
-            ));
-    }
-    // We can't implicitly cast a larger type into a smaller type
-    else if old_type.size() > new_type.size() {
-        return CanCast::No(format!(
-                "Cannot implicitly cast larger type '{}' into smaller type '{}' due to the possibility of truncation",
-                old_type.get_label(),
-                new_type.get_label(),
-            ));
-    }
-    // We can't implicitly cast a non-number type into a different non-number type
-    else if !is_number(&old_type) && !is_number(&new_type) && old_type != new_type {
-        return CanCast::No(format!(
-            "Cannot implicitly cast value of type '{}' into value of type '{}'",
-            old_type.get_label(),
-            new_type.get_label(),
-        ));
-    }
-    // We can't cast i64 or u64 into f64
-    else {
-        match old_type.data_type {
-            Type::Primitive(old_primitive) => match old_primitive {
-                Primitive::I64 | Primitive::U64 => match new_type.data_type {
-                    Type::Primitive(new_primitive) => match new_primitive {
-                        Primitive::F64 => {
-                            return CanCast::No(format!(
-                                "Cannot implicitly cast value of type '{}' into value of type '{}'",
-                                old_type.get_label(),
-                                new_type.get_label(),
-                            ));
-                        }
-                        // We can cast!!
-                        _ => return CanCast::Yes,
-                    },
-                    // We can cast!!
-                    _ => return CanCast::Yes,
+            match symbol_table.find_symbol(&node.name) {
+                None => panic!("Should have already handled case that variable cannot be found"),
+                Some(symbol) => match &mut *symbol.borrow_mut() {
+                    Symbol::Variable(var_symbol) => var_symbol.data_type = expression_type,
                 },
-                // We can cast!!
-                _ => return CanCast::Yes,
-            },
-            // We can cast!!
-            _ => return CanCast::Yes,
+            }
         }
     }
-}
-
-// Cast node to type
-pub fn implicit_cast(
-    old_type_node: NodePointer,
-    new_type_node: NodePointer,
-    ast: &mut AST,
-    logger: &mut Logger,
-) {
-    // Get the new type we want to cast the old_type_node to
-    let new_type = ast.get_node(new_type_node).get_type();
-
-    // Replace the type of the old_type_node with a copy of the new type
-    infer_type(old_type_node, new_type, ast, logger);
 }
 
 pub fn infer_type(
@@ -805,69 +678,18 @@ pub fn infer_type(
                         let operand_pointer = unary_node.operand;
                         infer_type(operand_pointer, new_type, ast, logger);
                     }
-                    ExpressionNode::Variable(_) => todo!(),
+                    // Variable expression nodes already have types in their symbol table entries,
+                    // as set by type checking the declaration node
+                    ExpressionNode::Variable(_) => {}
                 }
             }
             ASTNode::RootNode(_) => panic!("Trying to infer type of RootNode"),
             ASTNode::NotANode(_) => panic!("Trying to infer type of NotANode"),
-            // Uhh do later
-            ASTNode::StatementNode(_) => todo!(),
-            ASTNode::TypeHintNode(_) => todo!(),
-            ASTNode::IdentifierNode(_) => todo!(),
+            ASTNode::StatementNode(_) => panic!("Trying to infer type of StatementNode"),
+            ASTNode::TypeHintNode(_) => panic!("Trying to infer type of TypeHintNode"),
+            ASTNode::IdentifierNode(_) => panic!("Trying to infer type of IdentifierNode"),
         }
     }
-    /*
-    // If this is a literal node, we may need to update its value
-    match node {
-        ASTNode::ExpressionNode(expr_node) => {
-            match expr_node {
-                ExpressionNode::Literal(literal_node) => {
-                    match literal_node.value {
-                        Literal::Int(int_val) => {
-                            // If our new type is float
-                            let new_type = node.get_type();
-                            if is_float(&new_type) {
-                                self.logger.log(&format!(
-                                    "Updating value of {}:",
-                                    node.node_to_string()
-                                ));
-                                *node = ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(
-                                        Literal::Float(int_val as f64),
-                                        node.get_token().clone(),
-                                    ),
-                                ));
-                                node.set_type(new_type);
-                                self.logger.log(&format!("\t{}", node.node_to_string()));
-                            }
-                        }
-                        Literal::Float(float_val) => {
-                            // Check our new type
-                            let new_type = node.get_type();
-                            if is_int(&new_type) {
-                                self.logger.log(&format!(
-                                    "Updating value of {}:",
-                                    node.node_to_string()
-                                ));
-                                *node = ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(
-                                        Literal::Int(float_val as i128),
-                                        node.get_token().clone(),
-                                    ),
-                                ));
-                                node.set_type(new_type);
-                                self.logger.log(&format!("\t{}", node.node_to_string()));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {}
-            }
-        }
-        _ => {}
-    }
-    */
 }
 
 pub fn incompatible_type_error_two_operands(
