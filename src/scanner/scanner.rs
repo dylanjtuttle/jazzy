@@ -295,7 +295,7 @@ impl Scanner<'_> {
                 self.error.warn(
                     WarningType::SnakeCaseIdentifierWarning,
                     vec![ErrorMessage::new(
-                        None,    
+                        None,
                         &self.new_location_info(self.get_length()),
                     )],
                     Some(format!(
@@ -553,7 +553,7 @@ impl Scanner<'_> {
                                     self.error.report(
                                         ErrorType::MalformedSciNotationLiteralError,
                                         vec![ErrorMessage::new(
-                                            None,    
+                                            None,
                                             &self.new_location_info(self.get_length()),
                                         )],
                                         Some(String::from(
@@ -569,7 +569,7 @@ impl Scanner<'_> {
                                         self.error.report(
                                             ErrorType::MalformedSciNotationLiteralError,
                                             vec![ErrorMessage::new(
-                                                None,    
+                                                None,
                                                 &self.new_location_info(self.get_length()),
                                             )],
                                             Some(String::from(

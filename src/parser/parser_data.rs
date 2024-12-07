@@ -24,7 +24,7 @@
 
 use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{new_key_type, SlotMap};
 
 use crate::{
     infrastructure::{error::ErrorReporter, log::Logger},
@@ -34,140 +34,1138 @@ use crate::{
 
 pub type NodePointer = usize;
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct AST {
-    pub root_node: Option<RootNodeKey>,
+    pub root: Option<RootKey>,
 
-    pub root_nodes: SlotMap<RootNodeKey, RootNode>,
+    pub repl_root_nodes: SlotMap<REPLRootKey, REPLRoot>,
+    pub file_root_nodes: SlotMap<FileRootKey, FileRoot>,
 
-    pub variable_assignment_nodes: SlotMap<VariableAssignmentKey, VariableAssignment>,
     pub variable_declaration_nodes: SlotMap<VariableDeclarationKey, VariableDeclaration>,
+    pub variable_assignment_nodes: SlotMap<VariableAssignmentKey, VariableAssignment>,
 
-    pub binary_nodes: SlotMap<BinaryKey, Binary>,
-    pub unary_nodes: SlotMap<UnaryKey, Unary>,
-    pub variable_nodes: SlotMap<VariableKey, Variable>,
-    pub literal_nodes: SlotMap<LiteralKey, Literal>,
+    pub binary_expression_nodes: SlotMap<BinaryExpressionKey, BinaryExpression>,
+    pub unary_expression_nodes: SlotMap<UnaryExpressionKey, UnaryExpression>,
+    pub variable_expression_nodes: SlotMap<VariableExpressionKey, VariableExpression>,
+    pub literal_expression_nodes: SlotMap<LiteralExpressionKey, LiteralExpression>,
 
     pub identifier_nodes: SlotMap<IdentifierKey, Identifier>,
+
+    pub type_hint_nodes: SlotMap<TypeHintKey, TypeHint>,
 }
 
 impl AST {
     pub fn new() -> AST {
         return AST {
-            root_node: None,
+            root: None,
 
-            root_nodes: SlotMap::with_key(),
+            repl_root_nodes: SlotMap::with_key(),
+            file_root_nodes: SlotMap::with_key(),
 
-            variable_assignment_nodes: SlotMap::with_key(),
             variable_declaration_nodes: SlotMap::with_key(),
+            variable_assignment_nodes: SlotMap::with_key(),
 
-            binary_nodes: SlotMap::with_key(),
-            unary_nodes: SlotMap::with_key(),
-            variable_nodes: SlotMap::with_key(),
-            literal_nodes: SlotMap::with_key(),
+            binary_expression_nodes: SlotMap::with_key(),
+            unary_expression_nodes: SlotMap::with_key(),
+            variable_expression_nodes: SlotMap::with_key(),
+            literal_expression_nodes: SlotMap::with_key(),
 
             identifier_nodes: SlotMap::with_key(),
+
+            type_hint_nodes: SlotMap::with_key(),
         };
+    }
+
+    pub fn get_repl_root(&self, key: REPLRootKey) -> &REPLRoot {
+        return &self.repl_root_nodes[key];
+    }
+
+    pub fn get_repl_root_mut(&self, key: REPLRootKey) -> &mut REPLRoot {
+        return &mut self.repl_root_nodes[key];
+    }
+
+    pub fn get_file_root(&self, key: FileRootKey) -> &FileRoot {
+        return &self.file_root_nodes[key];
+    }
+
+    pub fn get_file_root_mut(&self, key: FileRootKey) -> &mut FileRoot {
+        return &mut self.file_root_nodes[key];
+    }
+
+    pub fn get_variable_declaration(&self, key: VariableDeclarationKey) -> &VariableDeclaration {
+        return &self.variable_declaration_nodes[key];
+    }
+
+    pub fn get_variable_declaration_mut(
+        &self,
+        key: VariableDeclarationKey,
+    ) -> &mut VariableDeclaration {
+        return &mut self.variable_declaration_nodes[key];
+    }
+
+    pub fn get_variable_assignment(&self, key: VariableAssignmentKey) -> &VariableAssignment {
+        return &self.variable_assignment_nodes[key];
+    }
+
+    pub fn get_variable_assignment_mut(
+        &self,
+        key: VariableAssignmentKey,
+    ) -> &mut VariableAssignment {
+        return &mut self.variable_assignment_nodes[key];
+    }
+
+    pub fn get_binary_expression(&self, key: BinaryExpressionKey) -> &BinaryExpression {
+        return &self.binary_expression_nodes[key];
+    }
+
+    pub fn get_binary_expression_mut(&self, key: BinaryExpressionKey) -> &mut BinaryExpression {
+        return &mut self.binary_expression_nodes[key];
+    }
+
+    pub fn get_unary_expression(&self, key: UnaryExpressionKey) -> &UnaryExpression {
+        return &self.unary_expression_nodes[key];
+    }
+
+    pub fn get_unary_expression_mut(&self, key: UnaryExpressionKey) -> &mut UnaryExpression {
+        return &mut self.unary_expression_nodes[key];
+    }
+
+    pub fn get_variable_expression(&self, key: VariableExpressionKey) -> &VariableExpression {
+        return &self.variable_expression_nodes[key];
+    }
+
+    pub fn get_variable_expression_mut(
+        &self,
+        key: VariableExpressionKey,
+    ) -> &mut VariableExpression {
+        return &mut self.variable_expression_nodes[key];
+    }
+
+    pub fn get_literal_expression(&self, key: LiteralExpressionKey) -> &LiteralExpression {
+        return &self.literal_expression_nodes[key];
+    }
+
+    pub fn get_literal_expression_mut(&self, key: LiteralExpressionKey) -> &mut LiteralExpression {
+        return &mut self.literal_expression_nodes[key];
+    }
+
+    pub fn get_identifier(&self, key: IdentifierKey) -> &Identifier {
+        return &self.identifier_nodes[key];
+    }
+
+    pub fn get_identifier_mut(&self, key: IdentifierKey) -> &mut Identifier {
+        return &mut self.identifier_nodes[key];
+    }
+
+    pub fn get_type_hint(&self, key: TypeHintKey) -> &TypeHint {
+        return &self.type_hint_nodes[key];
+    }
+
+    pub fn get_type_hint_mut(&self, key: TypeHintKey) -> &mut TypeHint {
+        return &mut self.type_hint_nodes[key];
     }
 }
 
 // #[derive(Clone, Copy, PartialEq)]
 // enum ASTNodeKey {
-//     RootNode(RootNodeKey),
-//     StatementOrExpression(StatementOrExpressionKey),
-//     Identifier(IdentifierKey),
+//     Root(RootKey),
 // }
 
 #[derive(Clone, PartialEq)]
 pub enum ASTNode {
-    // RootNode(RootNode),
-    // ExpressionNode(ExpressionNode),
-    // StatementNode(StatementNode),
-    // IdentifierNode(IdentifierStatementNode),
-    // TypeHintNode(TypeHintNode),
-    // NotANode(NotANode),
+    // REPLRoot(REPLRoot),
+    // FileRoot(FileRoot),
 }
 
 impl ASTNode {
-//     pub fn to_string(&self, ast: &AST) -> String {
-//         match self {
-//             ASTNode::RootNode(node) => return node.to_string(ast),
-//             ASTNode::ExpressionNode(node) => return node.to_string(ast),
-//             ASTNode::StatementNode(node) => return node.to_string(ast),
-//             ASTNode::IdentifierNode(node) => return node.to_string(),
-//             ASTNode::TypeHintNode(node) => return node.to_string(),
-//             ASTNode::NotANode(node) => return node.to_string(),
-//         }
-//     }
+    //     pub fn to_string(&self, ast: &AST) -> String {
+    //         match self {
+    //             ASTNode::RootNode(node) => return node.to_string(ast),
+    //             ASTNode::ExpressionNode(node) => return node.to_string(ast),
+    //             ASTNode::StatementNode(node) => return node.to_string(ast),
+    //             ASTNode::IdentifierNode(node) => return node.to_string(),
+    //             ASTNode::TypeHintNode(node) => return node.to_string(),
+    //             ASTNode::NotANode(node) => return node.to_string(),
+    //         }
+    //     }
 
-//     pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
-//         match self {
-//             ASTNode::RootNode(node) => return node.to_string_with_level(level, ast),
-//             ASTNode::ExpressionNode(node) => return node.to_string_with_level(level, ast),
-//             ASTNode::StatementNode(node) => return node.to_string_with_level(level, ast),
-//             ASTNode::IdentifierNode(node) => return node.to_string_with_level(level),
-//             ASTNode::TypeHintNode(node) => return node.to_string_with_level(level),
-//             ASTNode::NotANode(node) => return node.to_string_with_level(level),
-//         }
-//     }
+    //     pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+    //         match self {
+    //             ASTNode::RootNode(node) => return node.to_string_with_level(level, ast),
+    //             ASTNode::ExpressionNode(node) => return node.to_string_with_level(level, ast),
+    //             ASTNode::StatementNode(node) => return node.to_string_with_level(level, ast),
+    //             ASTNode::IdentifierNode(node) => return node.to_string_with_level(level),
+    //             ASTNode::TypeHintNode(node) => return node.to_string_with_level(level),
+    //             ASTNode::NotANode(node) => return node.to_string_with_level(level),
+    //         }
+    //     }
 
-//     pub fn node_to_string(&self) -> String {
-//         match self {
-//             ASTNode::RootNode(node) => return node.node_to_string(),
-//             ASTNode::ExpressionNode(node) => return node.node_to_string(),
-//             ASTNode::StatementNode(node) => return node.node_to_string(),
-//             ASTNode::IdentifierNode(node) => return node.node_to_string(),
-//             ASTNode::TypeHintNode(node) => return node.node_to_string(),
-//             ASTNode::NotANode(node) => return node.node_to_string(),
-//         }
-//     }
-// }
-
-// impl Debug for ASTNode {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             ASTNode::RootNode(_) => write!(f, "ASTNode::RootNode"),
-//             ASTNode::ExpressionNode(_) => write!(f, "ASTNode::ExpressionNode"),
-//             ASTNode::StatementNode(_) => write!(f, "ASTNode::StatementNode"),
-//             ASTNode::IdentifierNode(_) => write!(f, "ASTNode::IdentifierNode"),
-//             ASTNode::TypeHintNode(_) => write!(f, "ASTNode::TypeHintNode"),
-//             ASTNode::NotANode(_) => write!(f, "ASTNode::NotANode"),
-//         }
-//     }
+    //     pub fn node_to_string(&self) -> String {
+    //         match self {
+    //             ASTNode::RootNode(node) => return node.node_to_string(),
+    //             ASTNode::ExpressionNode(node) => return node.node_to_string(),
+    //             ASTNode::StatementNode(node) => return node.node_to_string(),
+    //             ASTNode::IdentifierNode(node) => return node.node_to_string(),
+    //             ASTNode::TypeHintNode(node) => return node.node_to_string(),
+    //             ASTNode::NotANode(node) => return node.node_to_string(),
+    //         }
+    //     }
+    // }
 }
-
 
 #[derive(Clone, PartialEq)]
-pub enum RootNodeKey {
-    REPLRootNodeKey(REPLRootNodeKey),
-    FileRootNodeKey(FileRootNodeKey),
+pub enum RootKey {
+    REPL(REPLRootKey),
+    File(FileRootKey),
 }
-
 
 #[derive(Clone, PartialEq)]
-pub enum RootNode {
-    REPLRootNode(REPLRootNode),
-    FileRootNode(FileRootNode),
+pub enum Root {
+    REPL(REPLRoot),
+    File(FileRoot),
 }
 
-
-new_key_type! { struct REPLRootNodeKey; }
+new_key_type! { struct REPLRootKey; }
 #[derive(Clone, PartialEq)]
-pub struct REPLRootNode {
-    pub children: Vec<REPLConstruct>,
-    pub children_start_at: usize,
+pub struct REPLRoot {
+    pub children: Vec<REPLConstructKey>,
+    pub new_children_start_at: usize,
 }
 
+impl REPLRoot {
+    pub fn new(children: Vec<REPLConstructKey>) -> REPLRoot {
+        REPLRoot {
+            children,
+            new_children_start_at: 0,
+        }
+    }
 
-impl REPLRootNode {
-    pub fn new(children: Vec<REPLConstruct>) -> REPLRootNode {
-        REPLRootNode { children, children_start_at: 0 }
+    pub fn set_children(&mut self, new_children: Vec<REPLConstructKey>) {
+        self.children = new_children;
+    }
+
+    pub fn add_child(&mut self, new_child: REPLConstructKey) {
+        self.new_children_start_at = self.children.len();
+        self.children.push(new_child);
+    }
+
+    pub fn add_children(&mut self, mut new_children: Vec<REPLConstructKey>) {
+        self.new_children_start_at = self.children.len();
+        self.children.append(&mut new_children);
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        let mut format = format!("{}\n", self.node_to_string());
+
+        for child in self.children.clone() {
+            match child {
+                REPLConstructKey::Stmt(StatementKey::VarDecl(decl)) => format.push_str(
+                    &ast.get_variable_declaration(decl)
+                        .to_string_with_level(level + 1, ast),
+                ),
+                REPLConstructKey::Stmt(StatementKey::VarAssmt(assmt)) => format.push_str(
+                    &ast.get_variable_assignment(assmt)
+                        .to_string_with_level(level + 1, ast),
+                ),
+                REPLConstructKey::Expr(ExpressionKey::Binary(bin)) => format.push_str(
+                    &ast.get_binary_expression(bin)
+                        .to_string_with_level(level + 1, ast),
+                ),
+                REPLConstructKey::Expr(ExpressionKey::Unary(un)) => format.push_str(
+                    &ast.get_unary_expression(un)
+                        .to_string_with_level(level + 1, ast),
+                ),
+                REPLConstructKey::Expr(ExpressionKey::Variable(var)) => format.push_str(
+                    &ast.get_variable_expression(var)
+                        .to_string_with_level(level + 1),
+                ),
+                REPLConstructKey::Expr(ExpressionKey::Literal(lit)) => format.push_str(
+                    &ast.get_literal_expression(lit)
+                        .to_string_with_level(level + 1),
+                ),
+            }
+        }
+
+        return format;
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return String::from("{REPLRoot}");
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        let mut format = format!("{}", self.node_to_string());
+
+        for child in self.children.clone() {
+            match child {
+                REPLConstructKey::Stmt(StatementKey::VarDecl(decl)) => {
+                    format.push_str(&ast.get_variable_declaration(decl).to_code(ast))
+                }
+                REPLConstructKey::Stmt(StatementKey::VarAssmt(assmt)) => {
+                    format.push_str(&ast.get_variable_assignment(assmt).to_code(ast))
+                }
+                REPLConstructKey::Expr(ExpressionKey::Binary(bin)) => {
+                    format.push_str(&ast.get_binary_expression(bin).to_code(ast))
+                }
+                REPLConstructKey::Expr(ExpressionKey::Unary(un)) => {
+                    format.push_str(&ast.get_unary_expression(un).to_code(ast))
+                }
+                REPLConstructKey::Expr(ExpressionKey::Variable(var)) => {
+                    format.push_str(&ast.get_variable_expression(var).to_code())
+                }
+                REPLConstructKey::Expr(ExpressionKey::Literal(lit)) => {
+                    format.push_str(&ast.get_literal_expression(lit).to_code())
+                }
+            }
+        }
+
+        return format;
     }
 }
 
+new_key_type! { struct FileRootKey; }
+#[derive(Clone, PartialEq)]
+pub struct FileRoot {
+    pub statements: Vec<StatementKey>,
+    pub expression: Option<ExpressionKey>,
+}
 
+impl FileRoot {
+    pub fn new(statements: Vec<StatementKey>, expression: Option<ExpressionKey>) -> FileRoot {
+        FileRoot {
+            statements,
+            expression,
+        }
+    }
 
+    pub fn set_statements(&mut self, new_statements: Vec<StatementKey>) {
+        self.statements = new_statements;
+    }
 
+    pub fn set_expression(&mut self, expression: ExpressionKey) {
+        self.expression = Some(expression);
+    }
+
+    pub fn add_statement(&mut self, new_statement: StatementKey) {
+        self.statements.push(new_statement);
+    }
+
+    pub fn add_statements(&mut self, mut new_statements: Vec<StatementKey>) {
+        self.statements.append(&mut new_statements);
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        let mut format = format!("{}\n", self.node_to_string());
+
+        for statement in self.statements.clone() {
+            match statement {
+                StatementKey::VarDecl(decl) => format.push_str(
+                    &ast.get_variable_declaration(decl)
+                        .to_string_with_level(level + 1, ast),
+                ),
+                StatementKey::VarAssmt(assmt) => format.push_str(
+                    &ast.get_variable_assignment(assmt)
+                        .to_string_with_level(level + 1, ast),
+                ),
+            }
+        }
+
+        match self.expression {
+            Some(ExpressionKey::Binary(bin)) => format.push_str(
+                &ast.get_binary_expression(bin)
+                    .to_string_with_level(level + 1, ast),
+            ),
+            Some(ExpressionKey::Unary(un)) => format.push_str(
+                &ast.get_unary_expression(un)
+                    .to_string_with_level(level + 1, ast),
+            ),
+            Some(ExpressionKey::Variable(var)) => format.push_str(
+                &ast.get_variable_expression(var)
+                    .to_string_with_level(level + 1),
+            ),
+            Some(ExpressionKey::Literal(lit)) => format.push_str(
+                &ast.get_literal_expression(lit)
+                    .to_string_with_level(level + 1),
+            ),
+            None => {}
+        }
+
+        return format;
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return String::from("{FileRoot}");
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        let mut format = format!("{}", self.node_to_string());
+
+        for statement in self.statements.clone() {
+            match statement {
+                StatementKey::VarDecl(decl) => {
+                    format.push_str(&ast.get_variable_declaration(decl).to_code(ast))
+                }
+                StatementKey::VarAssmt(assmt) => {
+                    format.push_str(&ast.get_variable_assignment(assmt).to_code(ast))
+                }
+            }
+        }
+
+        match self.expression {
+            Some(ExpressionKey::Binary(bin)) => {
+                format.push_str(&ast.get_binary_expression(bin).to_code(ast))
+            }
+            Some(ExpressionKey::Unary(un)) => {
+                format.push_str(&ast.get_unary_expression(un).to_code(ast))
+            }
+            Some(ExpressionKey::Variable(var)) => {
+                format.push_str(&ast.get_variable_expression(var).to_code())
+            }
+            Some(ExpressionKey::Literal(lit)) => {
+                format.push_str(&ast.get_literal_expression(lit).to_code())
+            }
+            None => {}
+        }
+
+        return format;
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum REPLConstructKey {
+    Stmt(StatementKey),
+    Expr(ExpressionKey),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum REPLConstruct {
+    Stmt(Statement),
+    Expr(Expression),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum StatementKey {
+    VarDecl(VariableDeclarationKey),
+    VarAssmt(VariableAssignmentKey),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Statement {
+    VarDecl(VariableDeclaration),
+    VarAssmt(VariableAssignment),
+}
+
+impl Statement {
+    pub fn to_string(&self, ast: &AST) -> String {
+        match self {
+            Statement::VarDecl(decl) => decl.to_string_with_level(0, ast),
+            Statement::VarAssmt(assmt) => assmt.to_string_with_level(0, ast),
+        }
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        match self {
+            Statement::VarDecl(decl) => decl.to_string_with_level(level, ast),
+            Statement::VarAssmt(assmt) => assmt.to_string_with_level(level, ast),
+        }
+    }
+
+    pub fn node_to_string(&self) -> String {
+        match self {
+            Statement::VarDecl(decl) => decl.node_to_string(),
+            Statement::VarAssmt(assmt) => assmt.node_to_string(),
+        }
+    }
+}
+
+new_key_type! { struct VariableDeclarationKey; }
+#[derive(Clone, PartialEq)]
+pub struct VariableDeclaration {
+    pub mutable: bool,
+    pub name: String,
+    pub identifier: IdentifierKey,
+    pub type_hint: Option<TypeHintKey>,
+    pub expression: ExpressionKey,
+    pub token: Token,
+    pub symbol: Option<Rc<RefCell<Symbol>>>,
+}
+
+impl VariableDeclaration {
+    pub fn new(
+        mutable: bool,
+        name: String,
+        identifier: IdentifierKey,
+        type_hint: Option<TypeHintKey>,
+        expression: ExpressionKey,
+        token: Token,
+    ) -> VariableDeclaration {
+        VariableDeclaration {
+            mutable,
+            name,
+            identifier,
+            type_hint,
+            expression,
+            token,
+            symbol: None,
+        }
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        return format!(
+            "{}{}\n{}{}{}",
+            "\t".repeat(level),
+            self.node_to_string(),
+            ast.get_identifier(self.identifier)
+                .to_string_with_level(level + 1),
+            match self.type_hint {
+                Some(type_hint) => format!(
+                    " {}",
+                    ast.get_type_hint(type_hint).to_string_with_level(level + 1)
+                ),
+                None => String::from(""),
+            },
+            match self.expression {
+                ExpressionKey::Binary(bin) => ast
+                    .get_binary_expression(bin)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Unary(un) => ast
+                    .get_unary_expression(un)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Variable(var) => ast
+                    .get_variable_expression(var)
+                    .to_string_with_level(level + 1),
+                ExpressionKey::Literal(lit) => ast
+                    .get_literal_expression(lit)
+                    .to_string_with_level(level + 1),
+            }
+        );
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!(
+            "{{Declaration{}}}",
+            if self.mutable { " (mut)" } else { "" }
+        );
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        return format!(
+            "let{} {}{} := {};",
+            if self.mutable { " (mut)" } else { "" },
+            ast.get_identifier(self.identifier).to_code(),
+            match self.type_hint {
+                Some(type_hint) => format!(" {}", ast.get_type_hint(type_hint).to_code()),
+                None => String::from(""),
+            },
+            match self.expression {
+                ExpressionKey::Binary(bin) => ast.get_binary_expression(bin).to_code(ast),
+                ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
+                ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
+                ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+            }
+        );
+    }
+}
+
+new_key_type! { struct VariableAssignmentKey; }
+#[derive(Clone, PartialEq)]
+pub struct VariableAssignment {
+    pub name: String,
+    pub identifier: IdentifierKey,
+    pub expression: ExpressionKey,
+    pub token: Token,
+    pub symbol: Option<Rc<RefCell<Symbol>>>,
+}
+
+impl VariableAssignment {
+    pub fn new(
+        name: String,
+        identifier: IdentifierKey,
+        expression: ExpressionKey,
+        token: Token,
+    ) -> VariableAssignment {
+        VariableAssignment {
+            name,
+            identifier,
+            expression,
+            token,
+            symbol: None,
+        }
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        return format!(
+            "{}{}\n{}{}",
+            "\t".repeat(level),
+            self.node_to_string(),
+            ast.get_identifier(self.identifier)
+                .to_string_with_level(level + 1),
+            match self.expression {
+                ExpressionKey::Binary(bin) => ast
+                    .get_binary_expression(bin)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Unary(un) => ast
+                    .get_unary_expression(un)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Variable(var) => ast
+                    .get_variable_expression(var)
+                    .to_string_with_level(level + 1),
+                ExpressionKey::Literal(lit) => ast
+                    .get_literal_expression(lit)
+                    .to_string_with_level(level + 1),
+            }
+        );
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return String::from("{Assignment}");
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        return format!(
+            "{} := {};",
+            ast.get_identifier(self.identifier).to_code(),
+            match self.expression {
+                ExpressionKey::Binary(bin) => ast.get_binary_expression(bin).to_code(ast),
+                ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
+                ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
+                ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+            }
+        );
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum ExpressionKey {
+    Binary(BinaryExpressionKey),
+    Unary(UnaryExpressionKey),
+    Variable(VariableExpressionKey),
+    Literal(LiteralExpressionKey),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Expression {
+    Binary(BinaryExpression),
+    Unary(UnaryExpression),
+    Variable(VariableExpression),
+    Literal(LiteralExpression),
+}
+
+impl Expression {
+    pub fn to_string(&self, ast: &AST) -> String {
+        match self {
+            Expression::Binary(bin) => bin.to_string_with_level(0, ast),
+            Expression::Unary(un) => un.to_string_with_level(0, ast),
+            Expression::Variable(var) => var.to_string_with_level(0),
+            Expression::Literal(lit) => lit.to_string_with_level(0),
+        }
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        match self {
+            Expression::Binary(bin) => bin.to_string_with_level(level, ast),
+            Expression::Unary(un) => un.to_string_with_level(level, ast),
+            Expression::Variable(var) => var.to_string_with_level(level),
+            Expression::Literal(lit) => lit.to_string_with_level(level),
+        }
+    }
+
+    pub fn node_to_string(&self) -> String {
+        match self {
+            Expression::Binary(bin) => bin.node_to_string(),
+            Expression::Unary(un) => un.node_to_string(),
+            Expression::Variable(var) => var.node_to_string(),
+            Expression::Literal(lit) => lit.node_to_string(),
+        }
+    }
+}
+
+new_key_type! { struct BinaryExpressionKey; }
+#[derive(Clone, PartialEq)]
+pub struct BinaryExpression {
+    pub operator: BinaryOperator,
+    pub token: Token,
+    pub data_type: DataType,
+
+    pub left: ExpressionKey,
+    pub right: ExpressionKey,
+}
+
+impl BinaryExpression {
+    pub fn new(
+        operator: BinaryOperator,
+        token: Token,
+        left: ExpressionKey,
+        right: ExpressionKey,
+    ) -> BinaryExpression {
+        BinaryExpression {
+            operator,
+            token,
+            data_type: DataType::new(Type::UnTyped),
+            left,
+            right,
+        }
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn set_left(&mut self, new_child: ExpressionKey) {
+        self.left = new_child;
+    }
+
+    pub fn set_right(&mut self, new_child: ExpressionKey) {
+        self.right = new_child;
+    }
+
+    pub fn get_type(&self) -> DataType {
+        return self.data_type.clone();
+    }
+
+    pub fn set_type(&mut self, data_type: DataType) {
+        self.data_type = data_type;
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        return format!(
+            "{}{}\n{}{}",
+            "\t".repeat(level),
+            self.node_to_string(),
+            match self.left {
+                ExpressionKey::Binary(bin) => ast
+                    .get_binary_expression(bin)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Unary(un) => ast
+                    .get_unary_expression(un)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Variable(var) => ast
+                    .get_variable_expression(var)
+                    .to_string_with_level(level + 1),
+                ExpressionKey::Literal(lit) => ast
+                    .get_literal_expression(lit)
+                    .to_string_with_level(level + 1),
+            },
+            match self.right {
+                ExpressionKey::Binary(bin) => ast
+                    .get_binary_expression(bin)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Unary(un) => ast
+                    .get_unary_expression(un)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Variable(var) => ast
+                    .get_variable_expression(var)
+                    .to_string_with_level(level + 1),
+                ExpressionKey::Literal(lit) => ast
+                    .get_literal_expression(lit)
+                    .to_string_with_level(level + 1),
+            },
+        );
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!(
+            "{{{}{}}}",
+            self.get_operator_str(),
+            match self.data_type.data_type {
+                Type::UnTyped => String::from(""),
+                _ => format!(", type: '{}'", self.data_type.get_label()),
+            }
+        );
+    }
+
+    pub fn get_operator_str(&self) -> String {
+        return match self.operator {
+            BinaryOperator::Plus => String::from("+"),
+            BinaryOperator::Minus => String::from("-"),
+            BinaryOperator::Times => String::from("*"),
+            BinaryOperator::Divide => String::from("/"),
+            BinaryOperator::Modulus => String::from("%"),
+            BinaryOperator::NotEqual => String::from("!="),
+            BinaryOperator::Equal => String::from("=="),
+            BinaryOperator::LessThan => String::from("<"),
+            BinaryOperator::LessThanOrEqual => String::from("<="),
+            BinaryOperator::GreaterThan => String::from(">"),
+            BinaryOperator::GreaterThanOrEqual => String::from(">="),
+            BinaryOperator::And => String::from("and"),
+            BinaryOperator::Or => String::from("or"),
+        };
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        return format!(
+            "{} {} {};",
+            match self.left {
+                ExpressionKey::Binary(bin) => ast.get_binary_expression(bin).to_code(ast),
+                ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
+                ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
+                ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+            },
+            self.get_operator_str(),
+            match self.right {
+                ExpressionKey::Binary(bin) => ast.get_binary_expression(bin).to_code(ast),
+                ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
+                ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
+                ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+            },
+        );
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum BinaryOperator {
+    Plus,
+    Minus,
+    Times,
+    Divide,
+    Modulus,
+    NotEqual,
+    Equal,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    And,
+    Or,
+}
+
+new_key_type! { struct UnaryExpressionKey; }
+#[derive(Clone, PartialEq)]
+pub struct UnaryExpression {
+    pub operator: UnaryOperator,
+    pub token: Token,
+    pub data_type: DataType,
+
+    pub operand: ExpressionKey,
+}
+
+impl UnaryExpression {
+    pub fn new(operator: UnaryOperator, token: Token, operand: ExpressionKey) -> UnaryExpression {
+        return UnaryExpression {
+            operator,
+            token,
+            data_type: DataType::new(Type::UnTyped),
+            operand,
+        };
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn set_operand(&mut self, new_child: ExpressionKey) {
+        self.operand = new_child;
+    }
+
+    pub fn get_type(&self) -> DataType {
+        return self.data_type.clone();
+    }
+
+    pub fn set_type(&mut self, data_type: DataType) {
+        self.data_type = data_type;
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        return format!(
+            "{}{}\n{}",
+            "\t".repeat(level),
+            self.node_to_string(),
+            match self.operand {
+                ExpressionKey::Binary(bin) => ast
+                    .get_binary_expression(bin)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Unary(un) => ast
+                    .get_unary_expression(un)
+                    .to_string_with_level(level + 1, ast),
+                ExpressionKey::Variable(var) => ast
+                    .get_variable_expression(var)
+                    .to_string_with_level(level + 1),
+                ExpressionKey::Literal(lit) => ast
+                    .get_literal_expression(lit)
+                    .to_string_with_level(level + 1),
+            },
+        );
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!(
+            "{{{}{}{}}}",
+            match self.operator {
+                UnaryOperator::Minus => "unary ",
+                _ => "",
+            },
+            self.get_operator_str(),
+            match self.data_type.data_type {
+                Type::UnTyped => String::from(""),
+                _ => format!(", type: '{}'", self.data_type.get_label()),
+            }
+        );
+    }
+
+    pub fn get_operator_str(&self) -> String {
+        return match self.operator {
+            UnaryOperator::Minus => String::from("-"),
+            UnaryOperator::Not => String::from("not"),
+        };
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        return format!(
+            "{}{};",
+            self.get_operator_str(),
+            match self.operand {
+                ExpressionKey::Binary(bin) => ast.get_binary_expression(bin).to_code(ast),
+                ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
+                ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
+                ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+            },
+        );
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum UnaryOperator {
+    Minus,
+    Not,
+}
+
+new_key_type! { struct VariableExpressionKey; }
+#[derive(Clone, PartialEq)]
+pub struct VariableExpression {
+    pub name: String,
+    pub symbol: Option<Rc<RefCell<Symbol>>>,
+    pub token: Token,
+}
+
+impl VariableExpression {
+    pub fn new(name: String, token: Token) -> VariableExpression {
+        return VariableExpression {
+            name,
+            symbol: None,
+            token,
+        };
+    }
+    pub fn get_type(&self) -> DataType {
+        match &self.symbol {
+            Some(symbol) => {
+                return symbol.borrow().get_type().clone();
+            }
+            None => return DataType::new(Type::UnTyped),
+        };
+    }
+
+    pub fn set_type(&mut self, data_type: DataType) {
+        match &self.symbol {
+            Some(symbol) => {
+                return symbol.borrow_mut().set_type(data_type);
+            }
+            None => panic!("Trying to set type of variable that has no symbol"),
+        }
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn to_string(&self) -> String {
+        return self.to_string_with_level(0);
+    }
+
+    pub fn to_string_with_level(&self, level: usize) -> String {
+        return format!("{}{}\n", "\t".repeat(level), self.node_to_string());
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!(
+            "{{Variable: {}{}}}",
+            self.name,
+            match self.get_type().data_type {
+                Type::UnTyped => String::from(""),
+                _type => format!(", type: '{}'", _type.get_label()),
+            }
+        );
+    }
+
+    pub fn to_code(&self) -> String {
+        return self.name.clone();
+    }
+}
+
+new_key_type! { struct LiteralExpressionKey; }
+#[derive(Clone, PartialEq)]
+pub struct LiteralExpression {
+    pub value: Literal,
+    pub token: Token,
+    pub data_type: DataType,
+}
+
+impl LiteralExpression {
+    pub fn new(value: Literal, token: Token) -> LiteralExpression {
+        return LiteralExpression {
+            value,
+            token,
+            data_type: DataType::new(Type::UnTyped),
+        };
+    }
+
+    pub fn get_type(&self) -> DataType {
+        return self.data_type.clone();
+    }
+
+    pub fn set_type(&mut self, data_type: DataType) {
+        self.data_type = data_type;
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn to_string(&self) -> String {
+        return self.to_string_with_level(0);
+    }
+
+    pub fn to_string_with_level(&self, level: usize) -> String {
+        return format!("{}{}\n", "\t".repeat(level), self.node_to_string());
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!(
+            "{{{}{}}}",
+            match &self.value {
+                Literal::Int(intval) => format!("int: {}", intval),
+                Literal::Float(floatval) => format!("float: {}", floatval),
+                Literal::True(_) => String::from("true"),
+                Literal::False(_) => String::from("false"),
+                Literal::String(stringval) => format!("string: \"{}\"", stringval.clone()),
+            },
+            match self.data_type.data_type {
+                Type::UnTyped => String::from(""),
+                _ => format!(", type: '{}'", self.data_type.get_label()),
+            }
+        );
+    }
+
+    pub fn to_code(&self) -> String {
+        return match &self.value {
+            Literal::Int(intval) => format!("int: {}", intval),
+            Literal::Float(floatval) => format!("float: {}", floatval),
+            Literal::True(_) => String::from("true"),
+            Literal::False(_) => String::from("false"),
+            Literal::String(stringval) => format!("string: \"{}\"", stringval.clone()),
+        };
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Literal {
+    Int(i128),
+    Float(f64),
+    True(bool),
+    False(bool),
+    String(String),
+}
+
+new_key_type! { struct IdentifierKey; }
+#[derive(Clone, PartialEq)]
+pub struct Identifier {
+    pub name: String,
+    pub token: Token,
+}
+
+impl Identifier {
+    pub fn new(name: String, token: Token) -> Identifier {
+        return Identifier { name, token };
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn to_string(&self) -> String {
+        return self.to_string_with_level(0);
+    }
+
+    pub fn to_string_with_level(&self, level: usize) -> String {
+        return format!("{}{}\n", "\t".repeat(level), self.node_to_string());
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!("{{ID: {}}}", self.name);
+    }
+
+    pub fn to_code(&self) -> String {
+        return self.name.clone();
+    }
+}
+
+new_key_type! { struct TypeHintKey; }
+#[derive(Clone, PartialEq)]
+pub struct TypeHint {
+    data_type: DataType,
+    token: Token,
+}
+
+impl TypeHint {
+    pub fn new(data_type: DataType, token: Token) -> TypeHint {
+        return TypeHint { data_type, token };
+    }
+
+    pub fn get_type(&self) -> DataType {
+        return self.data_type.clone();
+    }
+
+    pub fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    pub fn to_string(&self) -> String {
+        return self.to_string_with_level(0);
+    }
+
+    pub fn to_string_with_level(&self, level: usize) -> String {
+        return format!("{}{}\n", "\t".repeat(level), self.node_to_string());
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return format!("{{Type: {}}}", self.data_type.get_label());
+    }
+
+    pub fn to_code(&self) -> String {
+        return String::from(self.data_type.get_label());
+    }
+}
 
 pub enum Traversal<'traversal> {
     Preorder(&'traversal mut Callback),
