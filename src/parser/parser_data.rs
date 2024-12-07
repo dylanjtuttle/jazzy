@@ -24,6 +24,8 @@
 
 use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
+use slotmap::SlotMap;
+
 use crate::{
     infrastructure::{error::ErrorReporter, log::Logger},
     scanner::scanner_data::Token,
@@ -34,15 +36,37 @@ pub type NodePointer = usize;
 
 #[derive(Debug, PartialEq)]
 pub struct AST {
-    nodes: Vec<ASTNode>,
-    pub root_node: NodePointer,
+    pub root_node: Option<RootNodeKey>,
+
+    pub root_nodes: SlotMap<RootNodeKey, RootNode>,
+
+    pub variable_assignment_nodes: SlotMap<VariableAssignmentKey, VariableAssignment>,
+    pub variable_declaration_nodes: SlotMap<VariableDeclarationKey, VariableDeclaration>,
+
+    pub binary_nodes: SlotMap<BinaryKey, Binary>,
+    pub unary_nodes: SlotMap<UnaryKey, Unary>,
+    pub variable_nodes: SlotMap<VariableKey, Variable>,
+    pub literal_nodes: SlotMap<LiteralKey, Literal>,
+
+    pub identifier_nodes: SlotMap<IdentifierKey, Identifier>,
 }
 
 impl AST {
     pub fn new() -> AST {
         return AST {
-            nodes: vec![ASTNode::RootNode(RootNode::new(vec![]))],
-            root_node: 0,
+            root_node: None,
+
+            root_nodes: SlotMap::with_key(),
+
+            variable_assignment_nodes: SlotMap::with_key(),
+            variable_declaration_nodes: SlotMap::with_key(),
+
+            binary_nodes: SlotMap::with_key(),
+            unary_nodes: SlotMap::with_key(),
+            variable_nodes: SlotMap::with_key(),
+            literal_nodes: SlotMap::with_key(),
+
+            identifier_nodes: SlotMap::with_key(),
         };
     }
 
@@ -96,6 +120,13 @@ impl AST {
     pub fn len(&self) -> usize {
         return self.nodes.len();
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ASTNodeKey {
+    RootNode(RootNodeKey),
+    StatementOrExpression(StatementOrExpressionKey),
+    Identifier(IdentifierKey),
 }
 
 #[derive(Clone, PartialEq)]
