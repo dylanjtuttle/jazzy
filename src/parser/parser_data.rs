@@ -305,11 +305,11 @@ impl ASTNode {
 
     pub fn to_code(&self, ast: &AST) -> String {
         match self {
-            ASTNode::Root(node) => return node.to_code(),
+            ASTNode::Root(node) => return node.to_code(ast),
             ASTNode::File(node) => return node.to_code(ast),
-            ASTNode::REPLCommand(node) => return node.to_code(),
-            ASTNode::Statement(node) => return node.to_code(),
-            ASTNode::Expression(node) => return node.to_code(),
+            ASTNode::REPLCommand(node) => return node.to_code(ast),
+            ASTNode::Statement(node) => return node.to_code(ast),
+            ASTNode::Expression(node) => return node.to_code(ast),
             ASTNode::Identifier(node) => return node.to_code(),
             ASTNode::TypeHint(node) => return node.to_code(),
         }
@@ -326,6 +326,36 @@ pub enum RootKey {
 pub enum Root {
     REPL(REPLRoot),
     File(FileRoot),
+}
+
+impl Root {
+    pub fn to_string(&self, ast: &AST) -> String {
+        match self {
+            Root::REPL(repl) => repl.to_string_with_level(0, ast),
+            Root::File(file) => file.to_string_with_level(0, ast),
+        }
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        match self {
+            Root::REPL(repl) => repl.to_string_with_level(level, ast),
+            Root::File(file) => file.to_string_with_level(level, ast),
+        }
+    }
+
+    pub fn node_to_string(&self) -> String {
+        match self {
+            Root::REPL(repl) => repl.node_to_string(),
+            Root::File(file) => file.node_to_string(),
+        }
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        match self {
+            Root::REPL(repl) => repl.to_code(ast),
+            Root::File(file) => file.to_code(ast),
+        }
+    }
 }
 
 new_key_type! { pub struct REPLRootKey; }
@@ -374,6 +404,7 @@ impl REPLRoot {
                     &ast.get_variable_assignment(assmt)
                         .to_string_with_level(level + 1, ast),
                 ),
+                REPLCommandKey::Stmt(StatementKey::NotANode) => format.push_str("NotANode"),
                 REPLCommandKey::Expr(ExpressionKey::Binary(bin)) => format.push_str(
                     &ast.get_binary_expression(bin)
                         .to_string_with_level(level + 1, ast),
@@ -390,6 +421,7 @@ impl REPLRoot {
                     &ast.get_literal_expression(lit)
                         .to_string_with_level(level + 1),
                 ),
+                REPLCommandKey::Expr(ExpressionKey::NotANode) => format.push_str("NotANode"),
             }
         }
 
@@ -411,6 +443,7 @@ impl REPLRoot {
                 REPLCommandKey::Stmt(StatementKey::VarAssmt(assmt)) => {
                     format.push_str(&ast.get_variable_assignment(assmt).to_code(ast))
                 }
+                REPLCommandKey::Stmt(StatementKey::NotANode) => format.push_str("NotANode"),
                 REPLCommandKey::Expr(ExpressionKey::Binary(bin)) => {
                     format.push_str(&ast.get_binary_expression(bin).to_code(ast))
                 }
@@ -423,6 +456,7 @@ impl REPLRoot {
                 REPLCommandKey::Expr(ExpressionKey::Literal(lit)) => {
                     format.push_str(&ast.get_literal_expression(lit).to_code())
                 }
+                REPLCommandKey::Expr(ExpressionKey::NotANode) => format.push_str("NotANode"),
             }
         }
 
@@ -484,6 +518,36 @@ pub enum REPLCommand {
     Expr(Expression),
 }
 
+impl REPLCommand {
+    pub fn to_string(&self, ast: &AST) -> String {
+        match self {
+            REPLCommand::Stmt(stmt) => stmt.to_string_with_level(0, ast),
+            REPLCommand::Expr(expr) => expr.to_string_with_level(0, ast),
+        }
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        match self {
+            REPLCommand::Stmt(stmt) => stmt.to_string_with_level(level, ast),
+            REPLCommand::Expr(expr) => expr.to_string_with_level(level, ast),
+        }
+    }
+
+    pub fn node_to_string(&self) -> String {
+        match self {
+            REPLCommand::Stmt(stmt) => stmt.node_to_string(),
+            REPLCommand::Expr(expr) => expr.node_to_string(),
+        }
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        match self {
+            REPLCommand::Stmt(stmt) => stmt.to_code(ast),
+            REPLCommand::Expr(expr) => expr.to_code(ast),
+        }
+    }
+}
+
 new_key_type! { pub struct FileKey; }
 #[derive(Clone, PartialEq)]
 pub struct File {
@@ -532,6 +596,7 @@ impl File {
                     &ast.get_variable_assignment(assmt)
                         .to_string_with_level(level + 1, ast),
                 ),
+                StatementKey::NotANode => format.push_str("NotANode"),
             }
         }
 
@@ -552,6 +617,7 @@ impl File {
                 &ast.get_literal_expression(lit)
                     .to_string_with_level(level + 1),
             ),
+            Some(ExpressionKey::NotANode) => format.push_str("NotANode"),
             None => {}
         }
 
@@ -573,6 +639,7 @@ impl File {
                 StatementKey::VarAssmt(assmt) => {
                     format.push_str(&ast.get_variable_assignment(assmt).to_code(ast))
                 }
+                StatementKey::NotANode => {}
             }
         }
 
@@ -589,6 +656,7 @@ impl File {
             Some(ExpressionKey::Literal(lit)) => {
                 format.push_str(&ast.get_literal_expression(lit).to_code())
             }
+            Some(ExpressionKey::NotANode) => {}
             None => {}
         }
 
@@ -628,6 +696,13 @@ impl Statement {
         match self {
             Statement::VarDecl(decl) => decl.node_to_string(),
             Statement::VarAssmt(assmt) => assmt.node_to_string(),
+        }
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        match self {
+            Statement::VarDecl(decl) => decl.to_code(ast),
+            Statement::VarAssmt(assmt) => assmt.to_code(ast),
         }
     }
 }
@@ -699,6 +774,7 @@ impl VariableDeclaration {
                 ExpressionKey::Literal(lit) => ast
                     .get_literal_expression(lit)
                     .to_string_with_level(level + 1),
+                ExpressionKey::NotANode => String::from("NotANode"),
             }
         );
     }
@@ -724,15 +800,10 @@ impl VariableDeclaration {
                 ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
                 ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
                 ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+                ExpressionKey::NotANode => String::from("NotANode"),
             }
         );
     }
-}
-
-pub enum ExpressionOrAssignmentKey {
-    Expression(ExpressionKey),
-    Assignment(VariableAssignmentKey),
-    NotANode,
 }
 
 new_key_type! { pub struct VariableAssignmentKey; }
@@ -789,6 +860,7 @@ impl VariableAssignment {
                 ExpressionKey::Literal(lit) => ast
                     .get_literal_expression(lit)
                     .to_string_with_level(level + 1),
+                ExpressionKey::NotANode => String::from("NotANode"),
             }
         );
     }
@@ -806,6 +878,7 @@ impl VariableAssignment {
                 ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
                 ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
                 ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+                ExpressionKey::NotANode => String::from("NotANode"),
             }
         );
     }
@@ -853,6 +926,15 @@ impl Expression {
             Expression::Unary(un) => un.node_to_string(),
             Expression::Variable(var) => var.node_to_string(),
             Expression::Literal(lit) => lit.node_to_string(),
+        }
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        match self {
+            Expression::Binary(bin) => bin.to_code(ast),
+            Expression::Unary(un) => un.to_code(ast),
+            Expression::Variable(var) => var.to_code(),
+            Expression::Literal(lit) => lit.to_code(),
         }
     }
 }
@@ -926,6 +1008,7 @@ impl BinaryExpression {
                 ExpressionKey::Literal(lit) => ast
                     .get_literal_expression(lit)
                     .to_string_with_level(level + 1),
+                ExpressionKey::NotANode => String::from("NotANode"),
             },
             match self.right {
                 ExpressionKey::Binary(bin) => ast
@@ -940,6 +1023,7 @@ impl BinaryExpression {
                 ExpressionKey::Literal(lit) => ast
                     .get_literal_expression(lit)
                     .to_string_with_level(level + 1),
+                ExpressionKey::NotANode => String::from("NotANode"),
             },
         );
     }
@@ -981,6 +1065,7 @@ impl BinaryExpression {
                 ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
                 ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
                 ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+                ExpressionKey::NotANode => String::from("NotANode"),
             },
             self.get_operator_str(),
             match self.right {
@@ -988,6 +1073,7 @@ impl BinaryExpression {
                 ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
                 ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
                 ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+                ExpressionKey::NotANode => String::from("NotANode"),
             },
         );
     }
@@ -1068,6 +1154,7 @@ impl UnaryExpression {
                 ExpressionKey::Literal(lit) => ast
                     .get_literal_expression(lit)
                     .to_string_with_level(level + 1),
+                ExpressionKey::NotANode => String::from("NotANode"),
             },
         );
     }
@@ -1103,6 +1190,7 @@ impl UnaryExpression {
                 ExpressionKey::Unary(un) => ast.get_unary_expression(un).to_code(ast),
                 ExpressionKey::Variable(var) => ast.get_variable_expression(var).to_code(),
                 ExpressionKey::Literal(lit) => ast.get_literal_expression(lit).to_code(),
+                ExpressionKey::NotANode => String::from("NotANode"),
             },
         );
     }
@@ -1328,7 +1416,7 @@ pub enum Traversal<'traversal> {
 
 pub fn traverse(
     traversal: &mut Traversal,
-    node: NodePointer,
+    key: ASTNodeKey,
     ast: &mut AST,
     symbol_table: &mut SymbolTable,
     logger: &mut Logger,
@@ -1338,54 +1426,199 @@ pub fn traverse(
     // run the callback before we traverse to our children
     match traversal {
         Traversal::Preorder(&mut ref mut callback_pre) => {
-            callback_pre.run(node, ast, symbol_table, logger, error)
+            callback_pre.run(key, ast, symbol_table, logger, error)
         }
         Traversal::Postorder(_) => {}
         Traversal::PrePostorder(&mut ref mut callback_pre, _) => {
-            callback_pre.run(node, ast, symbol_table, logger, error)
+            callback_pre.run(key, ast, symbol_table, logger, error)
         }
     }
 
-    match ast.get_node(node) {
-        ASTNode::RootNode(root_node) => {
-            for child in root_node.children.clone() {
-                traverse(traversal, child, ast, symbol_table, logger, error);
+    // Visit any children of this node
+    match key {
+        ASTNodeKey::Root(root) => match root {
+            RootKey::REPL(repl_root) => {
+                let repl_root_node = ast.get_repl_root(repl_root);
+
+                for command in repl_root_node.commands.clone() {
+                    traverse(
+                        traversal,
+                        ASTNodeKey::REPLCommand(command),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+                }
             }
-        }
-        ASTNode::ExpressionNode(expr_node) => match expr_node {
-            ExpressionNode::Binary(bin_node) => {
-                let left = bin_node.left;
-                let right = bin_node.right;
-                traverse(traversal, left, ast, symbol_table, logger, error);
-                traverse(traversal, right, ast, symbol_table, logger, error);
-            }
-            ExpressionNode::Unary(un_node) => {
-                traverse(traversal, un_node.operand, ast, symbol_table, logger, error);
-            }
-            // Leaf node
-            ExpressionNode::Literal(_) => {}
-            ExpressionNode::Variable(_) => {}
-        },
-        ASTNode::StatementNode(stat_node) => match stat_node {
-            StatementNode::VariableDeclaration(var_node) => {
-                let expression = var_node.expression;
-                match var_node.type_hint {
-                    Some(type_hint) => {
-                        traverse(traversal, type_hint, ast, symbol_table, logger, error)
-                    }
+            RootKey::File(file_root) => {
+                let file_root_node = ast.get_file_root(file_root);
+
+                match file_root_node.file {
+                    Some(file) => traverse(
+                        traversal,
+                        ASTNodeKey::File(file),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    ),
                     None => {}
                 }
-                traverse(traversal, expression, ast, symbol_table, logger, error);
-            }
-            StatementNode::VariableAssignment(assmt_node) => {
-                let expression = assmt_node.expression;
-                traverse(traversal, expression, ast, symbol_table, logger, error);
             }
         },
-        // Leaf node
-        ASTNode::IdentifierNode(_) => {}
-        ASTNode::TypeHintNode(_) => {}
-        ASTNode::NotANode(_) => {}
+        ASTNodeKey::File(file) => {
+            let file_node = ast.get_file(file);
+
+            for statement in file_node.statements {
+                traverse(
+                    traversal,
+                    ASTNodeKey::Statement(statement),
+                    ast,
+                    symbol_table,
+                    logger,
+                    error,
+                );
+            }
+
+            match file_node.expression {
+                Some(expression) => traverse(
+                    traversal,
+                    ASTNodeKey::Expression(expression),
+                    ast,
+                    symbol_table,
+                    logger,
+                    error,
+                ),
+                None => {}
+            }
+        }
+        ASTNodeKey::REPLCommand(command) => match command {
+            REPLCommandKey::Stmt(stmt) => traverse(
+                traversal,
+                ASTNodeKey::Statement(stmt),
+                ast,
+                symbol_table,
+                logger,
+                error,
+            ),
+            REPLCommandKey::Expr(expr) => traverse(
+                traversal,
+                ASTNodeKey::Expression(expr),
+                ast,
+                symbol_table,
+                logger,
+                error,
+            ),
+        },
+        ASTNodeKey::Statement(stmt) => {
+            match stmt {
+                StatementKey::VarDecl(decl) => {
+                    let decl_node = ast.get_variable_declaration(decl);
+
+                    // Visit the identifier
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Identifier(decl_node.identifier),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+
+                    // Visit the type hint (if there is one)
+                    match decl_node.type_hint {
+                        Some(type_hint) => traverse(
+                            traversal,
+                            ASTNodeKey::TypeHint(type_hint),
+                            ast,
+                            symbol_table,
+                            logger,
+                            error,
+                        ),
+                        None => {}
+                    }
+
+                    // Visit the expression
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Expression(decl_node.expression),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+                }
+                StatementKey::VarAssmt(assmt) => {
+                    let assmt_node = ast.get_variable_assignment(assmt);
+
+                    // Visit the identifier
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Identifier(assmt_node.identifier),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+
+                    // Visit the expression
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Expression(assmt_node.expression),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+                }
+                StatementKey::NotANode => {}
+            }
+        }
+        ASTNodeKey::Expression(expr) => {
+            match expr {
+                ExpressionKey::Binary(bin) => {
+                    let bin_node = ast.get_binary_expression(bin);
+
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Expression(bin_node.left),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Expression(bin_node.right),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+                }
+                ExpressionKey::Unary(un) => {
+                    let un_node = ast.get_unary_expression(un);
+
+                    traverse(
+                        traversal,
+                        ASTNodeKey::Expression(un_node.operand),
+                        ast,
+                        symbol_table,
+                        logger,
+                        error,
+                    );
+                }
+                // Leaf nodes
+                ExpressionKey::Variable(_) => {}
+                ExpressionKey::Literal(_) => {}
+                ExpressionKey::NotANode => {}
+            }
+        }
+        // Leaf nodes
+        ASTNodeKey::Identifier(_) => {}
+        ASTNodeKey::TypeHint(_) => {}
+        ASTNodeKey::NotANode => {}
     }
 
     // If we're doing post or prepost,
@@ -1393,10 +1626,10 @@ pub fn traverse(
     match traversal {
         Traversal::Preorder(_) => {}
         Traversal::Postorder(callback_post) => {
-            callback_post.run(node, ast, symbol_table, logger, error)
+            callback_post.run(key, ast, symbol_table, logger, error)
         }
         Traversal::PrePostorder(_, callback_post) => {
-            callback_post.run(node, ast, symbol_table, logger, error)
+            callback_post.run(key, ast, symbol_table, logger, error)
         }
     }
 }

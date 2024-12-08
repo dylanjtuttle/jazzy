@@ -26,7 +26,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     infrastructure::{error::ErrorReporter, log::Logger},
-    parser::parser_data::{NodePointer, AST},
+    parser::parser_data::{ASTNodeKey, AST},
 };
 
 pub enum PrimitiveClass {
@@ -236,7 +236,7 @@ pub enum Callback {
 impl Callback {
     pub fn run(
         &mut self,
-        node: NodePointer,
+        node: ASTNodeKey,
         ast: &mut AST,
         symbol_table: &mut SymbolTable,
         logger: &mut Logger,
