@@ -114,7 +114,7 @@ fn main() {
 
 // This is the compiler!
 pub struct Jazzy {
-    _repl_mode: bool,
+    repl_mode: bool,
     location_info: LocationInfo,
     logger: Logger,
     error: ErrorReporter,
@@ -126,19 +126,19 @@ pub struct Jazzy {
 
 impl Jazzy {
     pub fn new(
-        _repl_mode: bool,
+        repl_mode: bool,
         log_file: Option<String>,
         error: ErrorReporter,
         emit_ast: bool,
     ) -> Jazzy {
         return Jazzy {
-            _repl_mode,
+            repl_mode,
             location_info: LocationInfo::new(),
             logger: Logger::new(log_file),
             error,
             emit_ast,
             variables: HashMap::new(),
-            ast: AST::new(),
+            ast: AST::new(repl_mode),
             symbol_table: SymbolTable::new(),
         };
     }

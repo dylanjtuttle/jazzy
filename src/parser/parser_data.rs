@@ -32,11 +32,11 @@ use crate::{
     semantic_checker::semantic_checker_data::{Callback, DataType, Symbol, SymbolTable, Type},
 };
 
-pub type NodePointer = usize;
-
-#[derive(PartialEq)]
+// #[derive(PartialEq)]
 pub struct AST {
-    pub root: Option<RootKey>,
+    pub root: RootKey,
+
+    pub file_nodes: SlotMap<FileKey, File>,
 
     pub repl_root_nodes: SlotMap<REPLRootKey, REPLRoot>,
     pub file_root_nodes: SlotMap<FileRootKey, FileRoot>,
@@ -55,12 +55,25 @@ pub struct AST {
 }
 
 impl AST {
-    pub fn new() -> AST {
-        return AST {
-            root: None,
+    pub fn new(repl_mode: bool) -> AST {
+        let root;
 
-            repl_root_nodes: SlotMap::with_key(),
-            file_root_nodes: SlotMap::with_key(),
+        let mut repl_root_nodes = SlotMap::with_key();
+        let mut file_root_nodes = SlotMap::with_key();
+
+        if repl_mode {
+            root = RootKey::REPL(repl_root_nodes.insert(REPLRoot::new()));
+        } else {
+            root = RootKey::File(file_root_nodes.insert(FileRoot::new()));
+        }
+
+        return AST {
+            root,
+
+            file_nodes: SlotMap::with_key(),
+
+            repl_root_nodes,
+            file_root_nodes,
 
             variable_declaration_nodes: SlotMap::with_key(),
             variable_assignment_nodes: SlotMap::with_key(),
@@ -84,12 +97,32 @@ impl AST {
         return &mut self.repl_root_nodes[key];
     }
 
+    pub fn new_repl_root(&self, node: REPLRoot) -> REPLRootKey {
+        return self.repl_root_nodes.insert(node);
+    }
+
     pub fn get_file_root(&self, key: FileRootKey) -> &FileRoot {
         return &self.file_root_nodes[key];
     }
 
     pub fn get_file_root_mut(&self, key: FileRootKey) -> &mut FileRoot {
         return &mut self.file_root_nodes[key];
+    }
+
+    pub fn new_file_root(&self, node: FileRoot) -> FileRootKey {
+        return self.file_root_nodes.insert(node);
+    }
+
+    pub fn get_file(&self, key: FileKey) -> &File {
+        return &self.file_nodes[key];
+    }
+
+    pub fn get_file_mut(&self, key: FileKey) -> &mut File {
+        return &mut self.file_nodes[key];
+    }
+
+    pub fn new_file(&self, node: File) -> FileKey {
+        return self.file_nodes.insert(node);
     }
 
     pub fn get_variable_declaration(&self, key: VariableDeclarationKey) -> &VariableDeclaration {
@@ -103,6 +136,10 @@ impl AST {
         return &mut self.variable_declaration_nodes[key];
     }
 
+    pub fn new_variable_declaration(&self, node: VariableDeclaration) -> VariableDeclarationKey {
+        return self.variable_declaration_nodes.insert(node);
+    }
+
     pub fn get_variable_assignment(&self, key: VariableAssignmentKey) -> &VariableAssignment {
         return &self.variable_assignment_nodes[key];
     }
@@ -114,6 +151,10 @@ impl AST {
         return &mut self.variable_assignment_nodes[key];
     }
 
+    pub fn new_variable_assignment(&self, node: VariableAssignment) -> VariableAssignmentKey {
+        return self.variable_assignment_nodes.insert(node);
+    }
+
     pub fn get_binary_expression(&self, key: BinaryExpressionKey) -> &BinaryExpression {
         return &self.binary_expression_nodes[key];
     }
@@ -122,12 +163,20 @@ impl AST {
         return &mut self.binary_expression_nodes[key];
     }
 
+    pub fn new_binary_expression(&self, node: BinaryExpression) -> BinaryExpressionKey {
+        return self.binary_expression_nodes.insert(node);
+    }
+
     pub fn get_unary_expression(&self, key: UnaryExpressionKey) -> &UnaryExpression {
         return &self.unary_expression_nodes[key];
     }
 
     pub fn get_unary_expression_mut(&self, key: UnaryExpressionKey) -> &mut UnaryExpression {
         return &mut self.unary_expression_nodes[key];
+    }
+
+    pub fn new_unary_expression(&self, node: UnaryExpression) -> UnaryExpressionKey {
+        return self.unary_expression_nodes.insert(node);
     }
 
     pub fn get_variable_expression(&self, key: VariableExpressionKey) -> &VariableExpression {
@@ -141,12 +190,20 @@ impl AST {
         return &mut self.variable_expression_nodes[key];
     }
 
+    pub fn new_variable_expression(&self, node: VariableExpression) -> VariableExpressionKey {
+        return self.variable_expression_nodes.insert(node);
+    }
+
     pub fn get_literal_expression(&self, key: LiteralExpressionKey) -> &LiteralExpression {
         return &self.literal_expression_nodes[key];
     }
 
     pub fn get_literal_expression_mut(&self, key: LiteralExpressionKey) -> &mut LiteralExpression {
         return &mut self.literal_expression_nodes[key];
+    }
+
+    pub fn new_literal_expression(&self, node: LiteralExpression) -> LiteralExpressionKey {
+        return self.literal_expression_nodes.insert(node);
     }
 
     pub fn get_identifier(&self, key: IdentifierKey) -> &Identifier {
@@ -157,6 +214,10 @@ impl AST {
         return &mut self.identifier_nodes[key];
     }
 
+    pub fn new_identifier(&self, node: Identifier) -> IdentifierKey {
+        return self.identifier_nodes.insert(node);
+    }
+
     pub fn get_type_hint(&self, key: TypeHintKey) -> &TypeHint {
         return &self.type_hint_nodes[key];
     }
@@ -164,56 +225,86 @@ impl AST {
     pub fn get_type_hint_mut(&self, key: TypeHintKey) -> &mut TypeHint {
         return &mut self.type_hint_nodes[key];
     }
+
+    pub fn new_type_hint(&self, node: TypeHint) -> TypeHintKey {
+        return self.type_hint_nodes.insert(node);
+    }
 }
 
-// #[derive(Clone, Copy, PartialEq)]
-// enum ASTNodeKey {
-//     Root(RootKey),
-// }
+#[derive(Clone, Copy, PartialEq)]
+pub enum ASTNodeKey {
+    Root(RootKey),
+    File(FileKey),
+    REPLCommand(REPLCommandKey),
+    Statement(StatementKey),
+    Expression(ExpressionKey),
+    Identifier(IdentifierKey),
+    TypeHint(TypeHintKey),
+    NotANode,
+}
 
 #[derive(Clone, PartialEq)]
 pub enum ASTNode {
-    // REPLRoot(REPLRoot),
-    // FileRoot(FileRoot),
+    Root(Root),
+    File(File),
+    REPLCommand(REPLCommand),
+    Statement(Statement),
+    Expression(Expression),
+    Identifier(Identifier),
+    TypeHint(TypeHint),
 }
 
 impl ASTNode {
-    //     pub fn to_string(&self, ast: &AST) -> String {
-    //         match self {
-    //             ASTNode::RootNode(node) => return node.to_string(ast),
-    //             ASTNode::ExpressionNode(node) => return node.to_string(ast),
-    //             ASTNode::StatementNode(node) => return node.to_string(ast),
-    //             ASTNode::IdentifierNode(node) => return node.to_string(),
-    //             ASTNode::TypeHintNode(node) => return node.to_string(),
-    //             ASTNode::NotANode(node) => return node.to_string(),
-    //         }
-    //     }
+    pub fn to_string(&self, ast: &AST) -> String {
+        match self {
+            ASTNode::Root(node) => return node.to_string(ast),
+            ASTNode::File(node) => node.to_string(ast),
+            ASTNode::REPLCommand(node) => return node.to_string(ast),
+            ASTNode::Statement(node) => return node.to_string(ast),
+            ASTNode::Expression(node) => return node.to_string(ast),
+            ASTNode::Identifier(node) => return node.to_string(),
+            ASTNode::TypeHint(node) => return node.to_string(),
+        }
+    }
 
-    //     pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
-    //         match self {
-    //             ASTNode::RootNode(node) => return node.to_string_with_level(level, ast),
-    //             ASTNode::ExpressionNode(node) => return node.to_string_with_level(level, ast),
-    //             ASTNode::StatementNode(node) => return node.to_string_with_level(level, ast),
-    //             ASTNode::IdentifierNode(node) => return node.to_string_with_level(level),
-    //             ASTNode::TypeHintNode(node) => return node.to_string_with_level(level),
-    //             ASTNode::NotANode(node) => return node.to_string_with_level(level),
-    //         }
-    //     }
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        match self {
+            ASTNode::Root(node) => return node.to_string_with_level(level, ast),
+            ASTNode::File(node) => return node.to_string_with_level(level, ast),
+            ASTNode::REPLCommand(node) => return node.to_string_with_level(level, ast),
+            ASTNode::Statement(node) => return node.to_string_with_level(level, ast),
+            ASTNode::Expression(node) => return node.to_string_with_level(level, ast),
+            ASTNode::Identifier(node) => return node.to_string_with_level(level),
+            ASTNode::TypeHint(node) => return node.to_string_with_level(level),
+        }
+    }
 
-    //     pub fn node_to_string(&self) -> String {
-    //         match self {
-    //             ASTNode::RootNode(node) => return node.node_to_string(),
-    //             ASTNode::ExpressionNode(node) => return node.node_to_string(),
-    //             ASTNode::StatementNode(node) => return node.node_to_string(),
-    //             ASTNode::IdentifierNode(node) => return node.node_to_string(),
-    //             ASTNode::TypeHintNode(node) => return node.node_to_string(),
-    //             ASTNode::NotANode(node) => return node.node_to_string(),
-    //         }
-    //     }
-    // }
+    pub fn node_to_string(&self) -> String {
+        match self {
+            ASTNode::Root(node) => return node.node_to_string(),
+            ASTNode::File(node) => return node.node_to_string(),
+            ASTNode::REPLCommand(node) => return node.node_to_string(),
+            ASTNode::Statement(node) => return node.node_to_string(),
+            ASTNode::Expression(node) => return node.node_to_string(),
+            ASTNode::Identifier(node) => return node.node_to_string(),
+            ASTNode::TypeHint(node) => return node.node_to_string(),
+        }
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        match self {
+            ASTNode::Root(node) => return node.to_code(),
+            ASTNode::File(node) => return node.to_code(ast),
+            ASTNode::REPLCommand(node) => return node.to_code(),
+            ASTNode::Statement(node) => return node.to_code(),
+            ASTNode::Expression(node) => return node.to_code(),
+            ASTNode::Identifier(node) => return node.to_code(),
+            ASTNode::TypeHint(node) => return node.to_code(),
+        }
+    }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum RootKey {
     REPL(REPLRootKey),
     File(FileRootKey),
@@ -225,33 +316,33 @@ pub enum Root {
     File(FileRoot),
 }
 
-new_key_type! { struct REPLRootKey; }
+new_key_type! { pub struct REPLRootKey; }
 #[derive(Clone, PartialEq)]
 pub struct REPLRoot {
-    pub children: Vec<REPLConstructKey>,
-    pub new_children_start_at: usize,
+    pub commands: Vec<REPLCommandKey>,
+    pub new_commands_start_at: usize,
+    pub ast_has_been_changed: bool,
 }
 
 impl REPLRoot {
-    pub fn new(children: Vec<REPLConstructKey>) -> REPLRoot {
+    pub fn new() -> REPLRoot {
         REPLRoot {
-            children,
-            new_children_start_at: 0,
+            commands: vec![],
+            new_commands_start_at: 0,
+            ast_has_been_changed: false,
         }
     }
 
-    pub fn set_children(&mut self, new_children: Vec<REPLConstructKey>) {
-        self.children = new_children;
+    pub fn add_command(&mut self, new_command: REPLCommandKey) {
+        self.ast_has_been_changed = true;
+        self.new_commands_start_at = self.commands.len();
+        self.commands.push(new_command);
     }
 
-    pub fn add_child(&mut self, new_child: REPLConstructKey) {
-        self.new_children_start_at = self.children.len();
-        self.children.push(new_child);
-    }
-
-    pub fn add_children(&mut self, mut new_children: Vec<REPLConstructKey>) {
-        self.new_children_start_at = self.children.len();
-        self.children.append(&mut new_children);
+    pub fn add_commands(&mut self, mut new_commands: Vec<REPLCommandKey>) {
+        self.ast_has_been_changed = true;
+        self.new_commands_start_at = self.commands.len();
+        self.commands.append(&mut new_commands);
     }
 
     pub fn to_string(&self, ast: &AST) -> String {
@@ -261,29 +352,29 @@ impl REPLRoot {
     pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
         let mut format = format!("{}\n", self.node_to_string());
 
-        for child in self.children.clone() {
-            match child {
-                REPLConstructKey::Stmt(StatementKey::VarDecl(decl)) => format.push_str(
+        for command in self.commands.clone() {
+            match command {
+                REPLCommandKey::Stmt(StatementKey::VarDecl(decl)) => format.push_str(
                     &ast.get_variable_declaration(decl)
                         .to_string_with_level(level + 1, ast),
                 ),
-                REPLConstructKey::Stmt(StatementKey::VarAssmt(assmt)) => format.push_str(
+                REPLCommandKey::Stmt(StatementKey::VarAssmt(assmt)) => format.push_str(
                     &ast.get_variable_assignment(assmt)
                         .to_string_with_level(level + 1, ast),
                 ),
-                REPLConstructKey::Expr(ExpressionKey::Binary(bin)) => format.push_str(
+                REPLCommandKey::Expr(ExpressionKey::Binary(bin)) => format.push_str(
                     &ast.get_binary_expression(bin)
                         .to_string_with_level(level + 1, ast),
                 ),
-                REPLConstructKey::Expr(ExpressionKey::Unary(un)) => format.push_str(
+                REPLCommandKey::Expr(ExpressionKey::Unary(un)) => format.push_str(
                     &ast.get_unary_expression(un)
                         .to_string_with_level(level + 1, ast),
                 ),
-                REPLConstructKey::Expr(ExpressionKey::Variable(var)) => format.push_str(
+                REPLCommandKey::Expr(ExpressionKey::Variable(var)) => format.push_str(
                     &ast.get_variable_expression(var)
                         .to_string_with_level(level + 1),
                 ),
-                REPLConstructKey::Expr(ExpressionKey::Literal(lit)) => format.push_str(
+                REPLCommandKey::Expr(ExpressionKey::Literal(lit)) => format.push_str(
                     &ast.get_literal_expression(lit)
                         .to_string_with_level(level + 1),
                 ),
@@ -300,24 +391,24 @@ impl REPLRoot {
     pub fn to_code(&self, ast: &AST) -> String {
         let mut format = format!("{}", self.node_to_string());
 
-        for child in self.children.clone() {
-            match child {
-                REPLConstructKey::Stmt(StatementKey::VarDecl(decl)) => {
+        for command in self.commands.clone() {
+            match command {
+                REPLCommandKey::Stmt(StatementKey::VarDecl(decl)) => {
                     format.push_str(&ast.get_variable_declaration(decl).to_code(ast))
                 }
-                REPLConstructKey::Stmt(StatementKey::VarAssmt(assmt)) => {
+                REPLCommandKey::Stmt(StatementKey::VarAssmt(assmt)) => {
                     format.push_str(&ast.get_variable_assignment(assmt).to_code(ast))
                 }
-                REPLConstructKey::Expr(ExpressionKey::Binary(bin)) => {
+                REPLCommandKey::Expr(ExpressionKey::Binary(bin)) => {
                     format.push_str(&ast.get_binary_expression(bin).to_code(ast))
                 }
-                REPLConstructKey::Expr(ExpressionKey::Unary(un)) => {
+                REPLCommandKey::Expr(ExpressionKey::Unary(un)) => {
                     format.push_str(&ast.get_unary_expression(un).to_code(ast))
                 }
-                REPLConstructKey::Expr(ExpressionKey::Variable(var)) => {
+                REPLCommandKey::Expr(ExpressionKey::Variable(var)) => {
                     format.push_str(&ast.get_variable_expression(var).to_code())
                 }
-                REPLConstructKey::Expr(ExpressionKey::Literal(lit)) => {
+                REPLCommandKey::Expr(ExpressionKey::Literal(lit)) => {
                     format.push_str(&ast.get_literal_expression(lit).to_code())
                 }
             }
@@ -327,16 +418,70 @@ impl REPLRoot {
     }
 }
 
-new_key_type! { struct FileRootKey; }
+new_key_type! { pub struct FileRootKey; }
 #[derive(Clone, PartialEq)]
 pub struct FileRoot {
+    pub file: Option<FileKey>,
+}
+
+impl FileRoot {
+    pub fn new() -> FileRoot {
+        FileRoot { file: None }
+    }
+
+    pub fn set_file(&mut self, new_file: FileKey) {
+        self.file = Some(new_file);
+    }
+
+    pub fn to_string(&self, ast: &AST) -> String {
+        return self.to_string_with_level(0, ast);
+    }
+
+    pub fn to_string_with_level(&self, level: usize, ast: &AST) -> String {
+        return format!(
+            "{}\n{}",
+            self.node_to_string(),
+            match self.file {
+                None => String::from(""),
+                Some(file) => ast.get_file(file).to_string_with_level(level + 1, ast),
+            }
+        );
+    }
+
+    pub fn node_to_string(&self) -> String {
+        return String::from("{FileRoot}");
+    }
+
+    pub fn to_code(&self, ast: &AST) -> String {
+        return match self.file {
+            None => String::from(""),
+            Some(file) => ast.get_file(file).to_code(ast),
+        };
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum REPLCommandKey {
+    Stmt(StatementKey),
+    Expr(ExpressionKey),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum REPLCommand {
+    Stmt(Statement),
+    Expr(Expression),
+}
+
+new_key_type! { pub struct FileKey; }
+#[derive(Clone, PartialEq)]
+pub struct File {
     pub statements: Vec<StatementKey>,
     pub expression: Option<ExpressionKey>,
 }
 
-impl FileRoot {
-    pub fn new(statements: Vec<StatementKey>, expression: Option<ExpressionKey>) -> FileRoot {
-        FileRoot {
+impl File {
+    pub fn new(statements: Vec<StatementKey>, expression: Option<ExpressionKey>) -> File {
+        File {
             statements,
             expression,
         }
@@ -402,7 +547,7 @@ impl FileRoot {
     }
 
     pub fn node_to_string(&self) -> String {
-        return String::from("{FileRoot}");
+        return String::from("{File}");
     }
 
     pub fn to_code(&self, ast: &AST) -> String {
@@ -439,22 +584,11 @@ impl FileRoot {
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub enum REPLConstructKey {
-    Stmt(StatementKey),
-    Expr(ExpressionKey),
-}
-
-#[derive(Clone, PartialEq)]
-pub enum REPLConstruct {
-    Stmt(Statement),
-    Expr(Expression),
-}
-
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum StatementKey {
     VarDecl(VariableDeclarationKey),
     VarAssmt(VariableAssignmentKey),
+    NotANode,
 }
 
 #[derive(Clone, PartialEq)]
@@ -486,7 +620,7 @@ impl Statement {
     }
 }
 
-new_key_type! { struct VariableDeclarationKey; }
+new_key_type! { pub struct VariableDeclarationKey; }
 #[derive(Clone, PartialEq)]
 pub struct VariableDeclaration {
     pub mutable: bool,
@@ -583,7 +717,13 @@ impl VariableDeclaration {
     }
 }
 
-new_key_type! { struct VariableAssignmentKey; }
+pub enum ExpressionOrAssignmentKey {
+    Expression(ExpressionKey),
+    Assignment(VariableAssignmentKey),
+    NotANode,
+}
+
+new_key_type! { pub struct VariableAssignmentKey; }
 #[derive(Clone, PartialEq)]
 pub struct VariableAssignment {
     pub name: String,
@@ -659,12 +799,13 @@ impl VariableAssignment {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum ExpressionKey {
     Binary(BinaryExpressionKey),
     Unary(UnaryExpressionKey),
     Variable(VariableExpressionKey),
     Literal(LiteralExpressionKey),
+    NotANode,
 }
 
 #[derive(Clone, PartialEq)]
@@ -704,7 +845,7 @@ impl Expression {
     }
 }
 
-new_key_type! { struct BinaryExpressionKey; }
+new_key_type! { pub struct BinaryExpressionKey; }
 #[derive(Clone, PartialEq)]
 pub struct BinaryExpression {
     pub operator: BinaryOperator,
@@ -857,7 +998,7 @@ pub enum BinaryOperator {
     Or,
 }
 
-new_key_type! { struct UnaryExpressionKey; }
+new_key_type! { pub struct UnaryExpressionKey; }
 #[derive(Clone, PartialEq)]
 pub struct UnaryExpression {
     pub operator: UnaryOperator,
@@ -961,7 +1102,7 @@ pub enum UnaryOperator {
     Not,
 }
 
-new_key_type! { struct VariableExpressionKey; }
+new_key_type! { pub struct VariableExpressionKey; }
 #[derive(Clone, PartialEq)]
 pub struct VariableExpression {
     pub name: String,
@@ -1023,7 +1164,7 @@ impl VariableExpression {
     }
 }
 
-new_key_type! { struct LiteralExpressionKey; }
+new_key_type! { pub struct LiteralExpressionKey; }
 #[derive(Clone, PartialEq)]
 pub struct LiteralExpression {
     pub value: Literal,
@@ -1097,7 +1238,7 @@ pub enum Literal {
     String(String),
 }
 
-new_key_type! { struct IdentifierKey; }
+new_key_type! { pub struct IdentifierKey; }
 #[derive(Clone, PartialEq)]
 pub struct Identifier {
     pub name: String,
@@ -1130,7 +1271,7 @@ impl Identifier {
     }
 }
 
-new_key_type! { struct TypeHintKey; }
+new_key_type! { pub struct TypeHintKey; }
 #[derive(Clone, PartialEq)]
 pub struct TypeHint {
     data_type: DataType,

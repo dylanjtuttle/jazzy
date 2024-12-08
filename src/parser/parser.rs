@@ -25,15 +25,16 @@
 use crate::infrastructure::error::{ErrorMessage, ErrorReporter, ErrorType};
 use crate::infrastructure::log::Logger;
 use crate::parser::parser_data::{
-    ASTNode, BinaryExprNode, BinaryOperator, ExpressionNode, Literal, LiteralNode, UnaryExprNode,
-    UnaryOperator, AST,
+    BinaryExpression, BinaryOperator, Literal, LiteralExpression, UnaryExpression, UnaryOperator,
+    AST,
 };
 use crate::scanner::scanner_data::{Token, TokenType};
 use crate::semantic_checker::semantic_checker_data::{DataType, Primitive, Type};
 
 use super::parser_data::{
-    IdentifierStatementNode, NodePointer, NotANode, StatementNode, TypeHintNode,
-    VariableAssignmentNode, VariableDeclarationNode, VariableExprNode,
+    ExpressionKey, File, FileKey, Identifier, REPLCommandKey, RootKey, StatementKey, TypeHint,
+    TypeHintKey, VariableAssignment, VariableAssignmentKey, VariableDeclaration,
+    VariableDeclarationKey, VariableExpression,
 };
 
 pub struct Parser<'parse> {
@@ -67,79 +68,122 @@ impl Parser<'_> {
         self.logger.log("BEGIN Parsing");
         self.logger.log("-------------");
 
-        // Parse a list of statements and/or expressions
-        let constructs = self.constructs();
+        // First we need to figure out what kind of AST we're making
+        match self.ast.root {
+            RootKey::REPL(repl_root) => {
+                // Get the root node
+                let mut root = self.ast.get_repl_root_mut(repl_root);
 
-        // Add these constructs to the root node
-        match self.ast.get_mut_root_node() {
-            ASTNode::RootNode(root_node) => root_node.add_children(constructs),
-            _ => panic!("get_mut_root_node should only return a RootNode"),
+                // Parse the list of commands and add them to the root node
+                root.add_commands(self.parse_repl());
+
+                self.logger.log("\nAST after parsing:");
+                self.logger.log(&format!("{}", root.to_string(&self.ast)));
+            }
+            RootKey::File(file_root) => {
+                let mut root = self.ast.get_file_root_mut(file_root);
+
+                root.set_file(self.parse_file());
+
+                self.logger.log("\nAST after parsing:");
+                self.logger.log(&format!("{}", root.to_string(&self.ast)));
+            }
         }
-
-        self.logger.log("\nAST after parsing:");
-        self.logger.log(&format!(
-            "{}",
-            self.ast.get_root_node().to_string(&self.ast)
-        ));
     }
 
-    // Parse a list of expressions or statements
-    pub fn constructs(&mut self) -> Vec<NodePointer> {
-        let mut constructs = vec![];
+    // Parse a jazzy file
+    pub fn parse_file(&mut self) -> FileKey {
+        let mut statements = vec![];
+
+        // Parse a list of statements
+        while !self.is_at_end()
+            && (self.match_token(&[TokenType::Let])
+                || self.match_next_token(&[TokenType::Assign, TokenType::BadAssign]))
+        {
+            statements.push(self.statement());
+        }
+
+        // Try to parse an expression
+        let mut expression = Some(self.expression());
+
+        if expression == Some(ExpressionKey::NotANode) {
+            expression = None;
+        }
+
+        // Return the parsed file
+        return self.ast.new_file(File::new(statements, expression));
+    }
+
+    // Parse a list of REPL commands
+    pub fn parse_repl(&mut self) -> Vec<REPLCommandKey> {
+        let mut commands = vec![];
 
         while !self.is_at_end() {
-            // If the current token is "Let"
-            // (which is the first token of a variable assignment),
+            // If the current token is "Let" or the next token is ":=" or "="
+            // (which would indicate that this is a variable declaration or assignment),
             // parse a statement
-            if self.current_token().token_type == TokenType::Let {
-                constructs.push(self.statement());
+            if self.match_token(&[TokenType::Let])
+                || self.match_next_token(&[TokenType::Assign, TokenType::BadAssign])
+            {
+                commands.push(REPLCommandKey::Stmt(self.statement()));
             }
             // Otherwise, parse an expression
             else {
-                constructs.push(self.expression());
+                commands.push(REPLCommandKey::Expr(self.expression()));
             }
         }
 
-        return constructs;
+        return commands;
     }
 
     /*
-     * statement  -> var_inst | var_assmt ;
-     * var_decl   -> "let" ["mut"] ID ["(" type ")"] ":=" expression ";" ;
-     * var_assmt  -> ID ":=" expression ";" ;
-     * type       ->   "i8" | "i16" | "i32" | "i64" | "i128"
-     *               | "u8" | "u16" | "u32" | "u64" | "u128"
-     *               | "f32" | "f64"
-     *               | "bool" | "str"
-     *               | ID
-     * expression -> equality ;
-     * equality   -> comparison ( ( "!=" | "==" ) comparison )* ;
-     * comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-     * term       -> factor ( ( "-" | "+" ) factor )* ;
-     * factor     -> unary ( ( "/" | "*" ) unary )* ;
-     * unary      -> ( "!" | "-" ) unary | primary ;
-     * primary    -> NUM | STR | "true" | "false" | "(" expression ")" ;
+     * file          -> (statement)* [expression] ;
+     * repl_commands -> (repl_command)* ;
+     * repl_command  -> statement | expression ;
+     * statement     -> var_inst | var_assmt ;
+     * var_decl      -> "let" ["mut"] ID ["(" type_hint ")"] ":=" expression ";" ;
+     * var_assmt     -> ID ":=" expression ";" ;
+     * type_hint     ->   "i8" | "i16" | "i32" | "i64" | "i128"
+     *                  | "u8" | "u16" | "u32" | "u64" | "u128"
+     *                  | "f32" | "f64"
+     *                  | "bool" | "str"
+     *                  | ID
+     * expression    -> equality ;
+     * equality      -> comparison ( ( "!=" | "==" ) comparison )* ;
+     * comparison    -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+     * term          -> factor ( ( "-" | "+" ) factor )* ;
+     * factor        -> unary ( ( "/" | "*" ) unary )* ;
+     * unary         -> ( "!" | "-" ) unary | primary ;
+     * primary       -> NUM | STR | "true" | "false" | "(" expression ")" ;
      */
 
-    pub fn statement(&mut self) -> NodePointer {
+    pub fn statement(&mut self) -> StatementKey {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::statement(): current token {:?}",
             token_type,
         ));
         if token_type == TokenType::Let {
-            return self.var_decl();
+            match self.var_decl() {
+                None => return StatementKey::NotANode,
+                Some(decl) => return StatementKey::VarDecl(decl),
+            }
         } else {
-            return self.var_assmt();
+            match self.var_assmt() {
+                None => return StatementKey::NotANode,
+                Some(assmt) => return StatementKey::VarAssmt(assmt),
+            }
         }
     }
 
-    pub fn var_decl(&mut self) -> NodePointer {
+    pub fn var_decl(&mut self) -> Option<VariableDeclarationKey> {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::var_decl(): current token {:?}",
             token_type,
         ));
+
+        let mut not_a_node = false;
 
         // "let"
         if !self.is_at_end() && !self.match_token(&[TokenType::Let]) {
@@ -181,11 +225,7 @@ impl Parser<'_> {
             match self.current_token().lexeme {
                 Some(lexeme) => {
                     variable_name = lexeme.clone();
-                    id = self
-                        .ast
-                        .new_node(ASTNode::IdentifierNode(IdentifierStatementNode::new(
-                            lexeme, id_token,
-                        )));
+                    id = self.ast.new_identifier(Identifier::new(lexeme, id_token));
                 }
                 None => panic!("Should have a lexeme"),
             }
@@ -210,8 +250,8 @@ impl Parser<'_> {
                     None,
                 ),
             }
-            variable_name = String::from("NotANode");
-            id = self.ast.new_node(ASTNode::NotANode(NotANode::new()));
+
+            not_a_node = true;
         }
         self.consume();
 
@@ -221,7 +261,7 @@ impl Parser<'_> {
             let left_paren_location = &self.current_token().location_info;
             self.consume();
 
-            type_hint = Some(self.type_());
+            type_hint = Some(self.type_hint());
 
             if !self.is_at_end() && !self.match_token(&[TokenType::RightParen]) {
                 let token_type = self.current_token().token_type.clone();
@@ -310,26 +350,28 @@ impl Parser<'_> {
         }
         self.consume();
 
-        return self
-            .ast
-            .new_node(ASTNode::StatementNode(StatementNode::VariableDeclaration(
-                VariableDeclarationNode::new(
-                    mutable,
-                    variable_name,
-                    id,
-                    type_hint,
-                    expression,
-                    assmt_token,
-                ),
+        if not_a_node {
+            return None;
+        } else {
+            return Some(self.ast.new_variable_declaration(VariableDeclaration::new(
+                mutable,
+                variable_name,
+                id,
+                type_hint,
+                expression,
+                assmt_token,
             )));
+        }
     }
 
-    pub fn var_assmt(&mut self) -> NodePointer {
+    pub fn var_assmt(&mut self) -> Option<VariableAssignmentKey> {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::var_assmt(): current token {:?}",
             token_type,
         ));
+
+        let mut not_a_node = false;
 
         // ID
         let id;
@@ -339,11 +381,7 @@ impl Parser<'_> {
             match self.current_token().lexeme {
                 Some(lexeme) => {
                     variable_name = lexeme.clone();
-                    id = self
-                        .ast
-                        .new_node(ASTNode::IdentifierNode(IdentifierStatementNode::new(
-                            lexeme, id_token,
-                        )));
+                    id = self.ast.new_identifier(Identifier::new(lexeme, id_token));
                 }
                 None => panic!("Should have a lexeme"),
             }
@@ -368,8 +406,8 @@ impl Parser<'_> {
                     None,
                 ),
             }
-            variable_name = String::from("NotANode");
-            id = self.ast.new_node(ASTNode::NotANode(NotANode::new()));
+
+            not_a_node = true;
         }
         self.consume();
 
@@ -416,49 +454,49 @@ impl Parser<'_> {
         }
         self.consume();
 
-        return self
-            .ast
-            .new_node(ASTNode::StatementNode(StatementNode::VariableAssignment(
-                VariableAssignmentNode::new(variable_name, id, expression, assmt_token),
+        if not_a_node {
+            return None;
+        } else {
+            return Some(self.ast.new_variable_assignment(VariableAssignment::new(
+                variable_name,
+                id,
+                expression,
+                assmt_token,
             )));
+        }
     }
 
-    pub fn type_(&mut self) -> NodePointer {
+    pub fn type_hint(&mut self) -> TypeHintKey {
         let token_type = self.current_token().token_type;
-        self.logger
-            .log(&format!("Parser::type_(): current token {:?}", token_type,));
+        self.logger.log(&format!(
+            "Parser::type_hint(): current token {:?}",
+            token_type,
+        ));
 
-        let type_;
-        match self.current_token().token_type {
-            TokenType::I8 => type_ = DataType::new(Type::Primitive(Primitive::I8)),
-            TokenType::I16 => type_ = DataType::new(Type::Primitive(Primitive::I16)),
-            TokenType::I32 => type_ = DataType::new(Type::Primitive(Primitive::I32)),
-            TokenType::I64 => type_ = DataType::new(Type::Primitive(Primitive::I64)),
-            TokenType::I128 => type_ = DataType::new(Type::Primitive(Primitive::I128)),
-            TokenType::U8 => type_ = DataType::new(Type::Primitive(Primitive::U8)),
-            TokenType::U16 => type_ = DataType::new(Type::Primitive(Primitive::U16)),
-            TokenType::U32 => type_ = DataType::new(Type::Primitive(Primitive::U32)),
-            TokenType::U64 => type_ = DataType::new(Type::Primitive(Primitive::U64)),
-            TokenType::U128 => type_ = DataType::new(Type::Primitive(Primitive::U128)),
-            TokenType::F32 => type_ = DataType::new(Type::Primitive(Primitive::F32)),
-            TokenType::F64 => type_ = DataType::new(Type::Primitive(Primitive::F64)),
-            TokenType::Bool => {
-                type_ = DataType::new(Type::Primitive(Primitive::Bool));
-            }
-            TokenType::Str => {
-                type_ = DataType::new(Type::Primitive(Primitive::String));
-            }
-            _ => type_ = DataType::new(Type::UnTyped),
-        }
+        let type_hint = match self.current_token().token_type {
+            TokenType::I8 => DataType::new(Type::Primitive(Primitive::I8)),
+            TokenType::I16 => DataType::new(Type::Primitive(Primitive::I16)),
+            TokenType::I32 => DataType::new(Type::Primitive(Primitive::I32)),
+            TokenType::I64 => DataType::new(Type::Primitive(Primitive::I64)),
+            TokenType::I128 => DataType::new(Type::Primitive(Primitive::I128)),
+            TokenType::U8 => DataType::new(Type::Primitive(Primitive::U8)),
+            TokenType::U16 => DataType::new(Type::Primitive(Primitive::U16)),
+            TokenType::U32 => DataType::new(Type::Primitive(Primitive::U32)),
+            TokenType::U64 => DataType::new(Type::Primitive(Primitive::U64)),
+            TokenType::U128 => DataType::new(Type::Primitive(Primitive::U128)),
+            TokenType::F32 => DataType::new(Type::Primitive(Primitive::F32)),
+            TokenType::F64 => DataType::new(Type::Primitive(Primitive::F64)),
+            TokenType::Bool => DataType::new(Type::Primitive(Primitive::Bool)),
+            TokenType::Str => DataType::new(Type::Primitive(Primitive::String)),
+            _ => DataType::new(Type::UnTyped),
+        };
 
         let type_token = self.current_token().clone();
         self.consume();
-        return self
-            .ast
-            .new_node(ASTNode::TypeHintNode(TypeHintNode::new(type_, type_token)));
+        return self.ast.new_type_hint(TypeHint::new(type_hint, type_token));
     }
 
-    pub fn expression(&mut self) -> NodePointer {
+    pub fn expression(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::expression(): current token {:?}",
@@ -467,7 +505,7 @@ impl Parser<'_> {
         return self.equality();
     }
 
-    pub fn equality(&mut self) -> NodePointer {
+    pub fn equality(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::equality(): current token {:?}",
@@ -478,13 +516,6 @@ impl Parser<'_> {
         self.logger
             .log("Parser::equality(): Parsing left expression:");
         let mut left = self.comparison();
-
-        // First, if the operator is :=, we actually have a variable assignment, not a binary
-        // expression
-        if self.match_token(&[TokenType::Assign]) {
-            self.retreat();
-            return self.var_assmt();
-        }
 
         while !self.is_at_end()
             && self.match_token(&[TokenType::NotEqual, TokenType::Equal, TokenType::BadAssign])
@@ -510,10 +541,10 @@ impl Parser<'_> {
 
             let binary_node = match operator.token_type {
                 TokenType::NotEqual => {
-                    BinaryExprNode::new(BinaryOperator::NotEqual, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::NotEqual, operator.clone(), left, right)
                 }
                 TokenType::Equal => {
-                    BinaryExprNode::new(BinaryOperator::Equal, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Equal, operator.clone(), left, right)
                 }
                 TokenType::BadAssign => {
                     self.error.report(
@@ -524,7 +555,7 @@ impl Parser<'_> {
                         )],
                         None,
                     );
-                    BinaryExprNode::new(BinaryOperator::Equal, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Equal, operator.clone(), left, right)
                 }
                 _type => panic!("Expected equality token, but got {:?}", _type),
             };
@@ -534,15 +565,13 @@ impl Parser<'_> {
                 binary_node.to_string(&self.ast)
             ));
 
-            left = self
-                .ast
-                .new_node(ASTNode::ExpressionNode(ExpressionNode::Binary(binary_node)));
+            left = ExpressionKey::Binary(self.ast.new_binary_expression(binary_node));
         }
 
         return left;
     }
 
-    pub fn comparison(&mut self) -> NodePointer {
+    pub fn comparison(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::comparison(): current token {:?}",
@@ -584,19 +613,22 @@ impl Parser<'_> {
             let right = self.term();
 
             let binary_node = match operator.token_type {
-                TokenType::GreaterThan => {
-                    BinaryExprNode::new(BinaryOperator::GreaterThan, operator.clone(), left, right)
-                }
-                TokenType::GreaterThanOrEqual => BinaryExprNode::new(
+                TokenType::GreaterThan => BinaryExpression::new(
+                    BinaryOperator::GreaterThan,
+                    operator.clone(),
+                    left,
+                    right,
+                ),
+                TokenType::GreaterThanOrEqual => BinaryExpression::new(
                     BinaryOperator::GreaterThanOrEqual,
                     operator.clone(),
                     left,
                     right,
                 ),
                 TokenType::LessThan => {
-                    BinaryExprNode::new(BinaryOperator::LessThan, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::LessThan, operator.clone(), left, right)
                 }
-                TokenType::LessThanOrEqual => BinaryExprNode::new(
+                TokenType::LessThanOrEqual => BinaryExpression::new(
                     BinaryOperator::LessThanOrEqual,
                     operator.clone(),
                     left,
@@ -610,15 +642,13 @@ impl Parser<'_> {
                 binary_node.to_string(&self.ast)
             ));
 
-            left = self
-                .ast
-                .new_node(ASTNode::ExpressionNode(ExpressionNode::Binary(binary_node)));
+            left = ExpressionKey::Binary(self.ast.new_binary_expression(binary_node));
         }
 
         return left;
     }
 
-    pub fn term(&mut self) -> NodePointer {
+    pub fn term(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger
             .log(&format!("Parser::term(): current token {:?}", token_type,));
@@ -647,10 +677,10 @@ impl Parser<'_> {
 
             let binary_node = match operator.token_type {
                 TokenType::Plus => {
-                    BinaryExprNode::new(BinaryOperator::Plus, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Plus, operator.clone(), left, right)
                 }
                 TokenType::Minus => {
-                    BinaryExprNode::new(BinaryOperator::Minus, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Minus, operator.clone(), left, right)
                 }
                 _type => panic!("Expected term token, but got {:?}", _type),
             };
@@ -660,15 +690,13 @@ impl Parser<'_> {
                 binary_node.to_string(&self.ast)
             ));
 
-            left = self
-                .ast
-                .new_node(ASTNode::ExpressionNode(ExpressionNode::Binary(binary_node)));
+            left = ExpressionKey::Binary(self.ast.new_binary_expression(binary_node));
         }
 
         return left;
     }
 
-    pub fn factor(&mut self) -> NodePointer {
+    pub fn factor(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger
             .log(&format!("Parser::factor(): current token {:?}", token_type,));
@@ -702,13 +730,13 @@ impl Parser<'_> {
 
             let binary_node = match operator.token_type {
                 TokenType::Star => {
-                    BinaryExprNode::new(BinaryOperator::Times, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Times, operator.clone(), left, right)
                 }
                 TokenType::Slash => {
-                    BinaryExprNode::new(BinaryOperator::Divide, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Divide, operator.clone(), left, right)
                 }
                 TokenType::Modulo => {
-                    BinaryExprNode::new(BinaryOperator::Modulus, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Modulus, operator.clone(), left, right)
                 }
                 _type => panic!("Expected factor token but got {:?}", _type),
             };
@@ -718,15 +746,13 @@ impl Parser<'_> {
                 binary_node.to_string(&self.ast)
             ));
 
-            left = self
-                .ast
-                .new_node(ASTNode::ExpressionNode(ExpressionNode::Binary(binary_node)));
+            left = ExpressionKey::Binary(self.ast.new_binary_expression(binary_node));
         }
 
         return left;
     }
 
-    pub fn boolean(&mut self) -> NodePointer {
+    pub fn boolean(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::boolean(): current token {:?}",
@@ -760,10 +786,10 @@ impl Parser<'_> {
 
             let binary_node = match operator.token_type {
                 TokenType::And => {
-                    BinaryExprNode::new(BinaryOperator::And, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::And, operator.clone(), left, right)
                 }
                 TokenType::Or => {
-                    BinaryExprNode::new(BinaryOperator::Or, operator.clone(), left, right)
+                    BinaryExpression::new(BinaryOperator::Or, operator.clone(), left, right)
                 }
                 _type => panic!("Expected boolean token but got {:?}", _type),
             };
@@ -773,15 +799,13 @@ impl Parser<'_> {
                 binary_node.to_string(&self.ast)
             ));
 
-            left = self
-                .ast
-                .new_node(ASTNode::ExpressionNode(ExpressionNode::Binary(binary_node)));
+            left = ExpressionKey::Binary(self.ast.new_binary_expression(binary_node));
         }
 
         return left;
     }
 
-    pub fn unary(&mut self) -> NodePointer {
+    pub fn unary(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger
             .log(&format!("Parser::unary(): current token {:?}", token_type,));
@@ -805,9 +829,11 @@ impl Parser<'_> {
 
             let unary_node = match operator.token_type {
                 TokenType::Minus => {
-                    UnaryExprNode::new(UnaryOperator::Minus, operator.clone(), operand)
+                    UnaryExpression::new(UnaryOperator::Minus, operator.clone(), operand)
                 }
-                TokenType::Not => UnaryExprNode::new(UnaryOperator::Not, operator.clone(), operand),
+                TokenType::Not => {
+                    UnaryExpression::new(UnaryOperator::Not, operator.clone(), operand)
+                }
                 _type => panic!("Expected unary token, but got {:?}", _type),
             };
 
@@ -815,9 +841,7 @@ impl Parser<'_> {
                 "Parser::unary(): Parsed node:\n{}",
                 unary_node.to_string(&self.ast)
             ));
-            return self
-                .ast
-                .new_node(ASTNode::ExpressionNode(ExpressionNode::Unary(unary_node)));
+            return ExpressionKey::Unary(self.ast.new_unary_expression(unary_node));
         }
 
         // Otherwise, we didn't find a unary operator token,
@@ -825,7 +849,7 @@ impl Parser<'_> {
         return self.primary();
     }
 
-    pub fn primary(&mut self) -> NodePointer {
+    pub fn primary(&mut self) -> ExpressionKey {
         let token_type = self.current_token().token_type;
         self.logger.log(&format!(
             "Parser::primary(): current token {:?}",
@@ -852,107 +876,87 @@ impl Parser<'_> {
                     None,
                 );
 
-                return self.ast.new_node(ASTNode::NotANode(NotANode::new()));
+                return ExpressionKey::NotANode;
             }
             Some(lexeme) => {
                 let literal_node = match current_token.token_type {
                     TokenType::ID => {
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Variable(
-                                    VariableExprNode::new(lexeme.to_owned(), current_token.clone()),
-                                )));
+                        let key = self.ast.new_variable_expression(VariableExpression::new(
+                            lexeme.to_owned(),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Variable(key)
                     }
                     TokenType::False => {
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(Literal::False(false), current_token.clone()),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::False(false),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::True => {
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(Literal::True(true), current_token.clone()),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::True(true),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::IntLit => {
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(
-                                        Literal::Int(lexeme.parse::<i128>().unwrap()),
-                                        current_token.clone(),
-                                    ),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::Int(lexeme.parse::<i128>().unwrap()),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::FloatLit => {
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(
-                                        Literal::Float(lexeme.parse::<f64>().unwrap()),
-                                        current_token.clone(),
-                                    ),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::Float(lexeme.parse::<f64>().unwrap()),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::HexLit => {
                         let without_prefix = lexeme.trim_start_matches("0x");
                         let hex_val = i128::from_str_radix(without_prefix, 16).unwrap();
                         self.logger.log(&format!("0xless: {:?}", hex_val));
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(Literal::Int(hex_val), current_token.clone()),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::Int(hex_val),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::BinaryLit => {
                         let without_prefix = lexeme.trim_start_matches("0b");
                         let binary_val = i128::from_str_radix(without_prefix, 2).unwrap();
                         println!("{:?}", binary_val);
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(
-                                        Literal::Int(binary_val),
-                                        current_token.clone(),
-                                    ),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::Int(binary_val),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::StringLit => {
                         self.consume();
-                        let pointer =
-                            self.ast
-                                .new_node(ASTNode::ExpressionNode(ExpressionNode::Literal(
-                                    LiteralNode::new(
-                                        Literal::String(lexeme.clone()),
-                                        current_token.clone(),
-                                    ),
-                                )));
+                        let key = self.ast.new_literal_expression(LiteralExpression::new(
+                            Literal::String(lexeme.clone()),
+                            current_token.clone(),
+                        ));
 
-                        pointer
+                        ExpressionKey::Literal(key)
                     }
                     TokenType::LeftParen => {
                         // Consume the left parenthesis
@@ -1013,7 +1017,17 @@ impl Parser<'_> {
 
                         self.logger.log(&format!(
                             "Parser::primary(): Parsed node:\n{}",
-                            self.ast.get_node(expression).to_string(&self.ast)
+                            match expression {
+                                ExpressionKey::Binary(bin) =>
+                                    self.ast.get_binary_expression(bin).to_string(&self.ast),
+                                ExpressionKey::Unary(un) =>
+                                    self.ast.get_unary_expression(un).to_string(&self.ast),
+                                ExpressionKey::Variable(var) =>
+                                    self.ast.get_variable_expression(var).to_string(),
+                                ExpressionKey::Literal(lit) =>
+                                    self.ast.get_literal_expression(lit).to_string(),
+                                ExpressionKey::NotANode => String::from("NotANode"),
+                            }
                         ));
 
                         expression
@@ -1038,7 +1052,7 @@ impl Parser<'_> {
 
                         self.consume();
 
-                        return self.ast.new_node(ASTNode::NotANode(NotANode::new()));
+                        return ExpressionKey::NotANode;
                     }
                 };
 
@@ -1100,12 +1114,37 @@ impl Parser<'_> {
         return false;
     }
 
+    fn match_next_token(&mut self, types: &[TokenType]) -> bool {
+        for token_type in types {
+            if self.check_next(token_type.clone()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     fn check(&mut self, token_type: TokenType) -> bool {
         if self.is_at_end() {
             return false;
         }
 
         return self.current_token().token_type == token_type;
+    }
+
+    fn check_next(&mut self, token_type: TokenType) -> bool {
+        self.consume();
+
+        if self.is_at_end() {
+            self.retreat();
+            return false;
+        }
+
+        let result = self.current_token().token_type == token_type;
+
+        self.retreat();
+
+        return result;
     }
 
     fn is_at_end(&mut self) -> bool {
