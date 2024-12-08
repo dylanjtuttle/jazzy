@@ -29,6 +29,7 @@ use std::process::exit;
 use clap::Parser as ArgParser;
 use colored::Colorize;
 use interpreter::interpreter_data::Value;
+use parser::parser_data::RootKey;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use semantic_checker::semantic_checker_data::SymbolTable;
@@ -214,10 +215,6 @@ impl Jazzy {
 
     // Take a vector of characters and run the compiler on it
     fn run(&mut self, chars: Vec<String>) {
-        // Get the previous size of the AST,
-        // so we can know if we've added to it
-        let old_ast_size = self.ast.len();
-
         // Instantiate the scanner, passing in the vector and the error reporter
         let mut scanner = Scanner::new(
             chars,
@@ -238,7 +235,7 @@ impl Jazzy {
         parser.parse();
 
         // If we haven't added any nodes to our AST, return to the REPL
-        if self.ast.len() == old_ast_size {
+        if self.ast.has_been_changed() {
             return;
         }
 
@@ -250,11 +247,16 @@ impl Jazzy {
         );
         semantic_checker.check();
 
-        let root_node = self.ast.get_root_node();
         // If the user just wants to emit the AST,
         // pretty-print it and then return to the REPL
         if self.emit_ast {
-            println!("{}", root_node.to_string(&self.ast));
+            println!(
+                "{}",
+                match self.ast.root {
+                    RootKey::REPL(repl) => self.ast.get_repl_root(repl).to_string(&self.ast),
+                    RootKey::File(file) => self.ast.get_file_root(file).to_string(&self.ast),
+                }
+            );
             // Return to the REPL
             return;
         }

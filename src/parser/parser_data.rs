@@ -89,6 +89,18 @@ impl AST {
         };
     }
 
+    pub fn has_been_changed(&self) -> bool {
+        match self.root {
+            RootKey::File(_) => false,
+            RootKey::REPL(repl) => {
+                let root = self.get_repl_root_mut(repl);
+                let answer = root.ast_has_been_changed;
+                root.ast_has_been_changed = false;
+                answer
+            }
+        }
+    }
+
     pub fn get_repl_root(&self, key: REPLRootKey) -> &REPLRoot {
         return &self.repl_root_nodes[key];
     }
